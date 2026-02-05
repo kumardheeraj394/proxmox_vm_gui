@@ -1,0 +1,82 @@
+---
+- hosts: proxmox
+  gather_facts: true
+  become: true
+  serial: 1
+
+  tasks:
+    # -------------------------------------------------
+    # Load base + clone variables (from GUI / CLI)
+    # -------------------------------------------------
+    - name: Streaming test
+      shell: |
+        for i in 1 2 3 4 5; do
+          echo "STREAM OK $i"
+          sleep 1
+        done
+
+    - name: Load input variables
+      set_fact:
+        target_node: "{{ target_node }}"
+        vmid: "{{ vmid | int }}"
+        vmname: "{{ vmname | default('ubuntu-ci') }}"
+        base_vm_type: "{{ base_vm_type | default('template') }}"
+        memory: "{{ memory | default(4096) | int }}"
+        cores: "{{ cores | default(2) | int }}"
+        disksize: "{{ disksize | default(20) | int }}"
+        storage: "{{ storage }}"
+        image: "{{ image }}"
+        ipaddr: "{{ ipaddr }}"
+        gateway: "{{ gateway }}"
+        ssh_port: "{{ ssh_port | default(22) | int }}"
+        clones: "{{ clones | default([]) }}"
+
+    # -------------------------------------------------
+    # Debug input
+    # -------------------------------------------------
+    - name: Show requested configuration
+      debug:
+        msg:
+          base_vm:
+            vmid: "{{ vmid }}"
+            vmname: "{{ vmname }}"
+            base_vm_type: "{{ base_vm_type }}"
+          clones: "{{ clones }}"
+
+    # -------------------------------------------------
+    # Create BASE VM (runs ONCE)
+    # -------------------------------------------------
+    - name: Create base VM
+      include_role:
+        name: proxmox_vm
+      vars:
+        target_node: "{{ target_node }}"
+        vmid: "{{ vmid }}"
+        vmname: "{{ vmname }}"
+        base_vm_type: "{{ base_vm_type }}"
+        memory: "{{ memory }}"
+        cores: "{{ cores }}"
+        disksize: "{{ disksize }}"
+        storage: "{{ storage }}"
+        image: "{{ image }}"
+        ipaddr: "{{ ipaddr }}"
+        gateway: "{{ gateway }}"
+        ssh_port: "{{ ssh_port }}"
+      when: base_vm_type == "new"
+
+    # -------------------------------------------------
+    # Create CLONES (loop happens HERE, not in the role)
+    # -------------------------------------------------
+    - name: Create clone VM
+      include_role:
+        name: proxmox_vm
+      vars:
+        run_only_clone: true
+        target_node: "{{ clonetarget_node }}"
+        vmid: "{{ clonevmid }}"
+        vmname: "{{ clonevmname }}"
+        memory: "{{ clonememory | default(memory) }}"
+        cores: "{{ clonecores | default(cores) }}"
+        disksize: "{{ clonedisksize | default(disksize) }}"
+        ipaddr: "{{ cloneipaddr }}"
+

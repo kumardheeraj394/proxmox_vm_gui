@@ -1,0 +1,43 @@
+---
+# proxmox_vm/tasks/main.yml
+# Main tasks for the Proxmox VM role
+
+# -------------------------
+# 1. Create base VM (if new)
+# -------------------------
+- name: Create single VM
+  import_tasks: create_single_vm.yml
+  when: base_vm_type == "new"
+
+# -------------------------
+# 2. Clone additional VMs (only if not testing run_only_clone)
+# -------------------------
+- name: Clone additional VMs
+  include_tasks: clone_vm.yml
+
+# -------------------------
+# 3. Configure cloned VMs sequentially
+# -------------------------
+- name: Configure each cloned VM sequentially
+  include_tasks: configure_clone.yml
+  loop: "{{ clones }}"
+  loop_control:
+    loop_var: current_clone
+
+# -------------------------
+# 4. Start main VM
+# -------------------------
+- name: Start main VM
+  command: qm start {{ vmid }}
+  when: base_vm_type == "new"
+
+# -------------------------
+# 5. Migrate main VM to selected node
+# -------------------------
+- name: Migrate main VM to selected node
+  command: qm migrate {{ vmid }} {{ target_node }} --online
+  become: true
+  when:
+    - base_vm_type == "new"
+    - inventory_hostname != target_node
+

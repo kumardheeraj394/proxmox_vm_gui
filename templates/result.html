@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VM Submission Result</title>
+</head>
+<body>
+    <h1>Base VM Details</h1>
+    <pre>{{ base_vm }}</pre>
+
+    {% if clones %}
+        <h1>Clones</h1>
+        {% for clone in clones %}
+            <h3>Clone {{ loop.index }}</h3>
+            <pre>{{ clone }}</pre>
+        {% endfor %}
+    {% else %}
+        <p>No clones configured.</p>
+    {% endif %}
+
+    <h1>Ansible Output</h1>
+    <pre>{{ ansible_output }}</pre>
+</body>
+</html>
+

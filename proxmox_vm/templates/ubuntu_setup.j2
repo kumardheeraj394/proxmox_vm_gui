@@ -1,0 +1,189 @@
+#!/bin/bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "=========================================="
+echo "🚀 Starting Ubuntu initial setup"
+echo "=========================================="
+
+### -------------------------------------------------
+### 0. Wait for cloud-init & apt locks
+### -------------------------------------------------
+echo "⏳ Waiting for cloud-init..."
+cloud-init status --wait || true
+
+echo "⏳ Waiting for apt locks..."
+while fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+      fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+      fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  sleep 3
+done
+
+### -------------------------------------------------
+### 1. Update system & install packages
+### -------------------------------------------------
+echo "📦 Updating system and installing packages..."
+
+apt update -y
+apt upgrade -yq
+
+apt install -yq \
+  screenfetch \
+  htop \
+  vim \
+  net-tools \
+  iftop \
+  curl \
+  lolcat \
+  qemu-guest-agent
+
+### -------------------------------------------------
+### 2. Disable cloud-init (after provisioning)
+### -------------------------------------------------
+echo "☁️ Disabling cloud-init..."
+
+cloud-init clean
+touch /etc/cloud/cloud-init.disabled
+
+if ! grep -q "^disable_cloud_init:" /etc/cloud/cloud.cfg; then
+  sed -i '1s;^;disable_cloud_init: true\n;' /etc/cloud/cloud.cfg
+fi
+
+### -------------------------------------------------
+### 3. Reset machine identity (template-safe)
+### -------------------------------------------------
+echo "🆔 Resetting machine identity..."
+
+truncate -s 0 /etc/machine-id
+rm -f /var/lib/dbus/machine-id
+ln -sf /etc/machine-id /var/lib/dbus/machine-id
+
+### -------------------------------------------------
+### 4. Clear logs
+### -------------------------------------------------
+echo "🧹 Clearing logs..."
+
+journalctl --rotate || true
+journalctl --vacuum-time=1s || true
+rm -f /var/log/wtmp /var/log/btmp || true
+
+### -------------------------------------------------
+### 5. SSH hardening
+### -------------------------------------------------
+echo "🔐 Hardening SSH..."
+
+sed -i "s/^#Port 22/Port {{ ssh_port }}/" /etc/ssh/sshd_config
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config.d/50-cloud-init.conf || true
+
+systemctl restart ssh
+
+### -------------------------------------------------
+### 6. Shell command audit logging
+### -------------------------------------------------
+echo "📜 Enabling shell audit logging..."
+
+touch /var/log/shell_audit.log
+chown root:adm /var/log/shell_audit.log
+chmod 640 /var/log/shell_audit.log
+
+cat <<'EOF' >> /root/.bashrc
+# === Shell Audit Logging ===
+if [ -z "$ORIGINAL_USER" ]; then
+  export ORIGINAL_USER=$(who am i 2>/dev/null | awk '{print $1}')
+  [ -z "$ORIGINAL_USER" ] && export ORIGINAL_USER=$USER
+fi
+LOG_STARTED=0
+log_command() {
+  [[ $LOG_STARTED -eq 0 ]] && return
+  [[ -z "$BASH_COMMAND" ]] && return
+  echo "$(date '+%F %T') - ${ORIGINAL_USER} as $(whoami): $BASH_COMMAND" >> /var/log/shell_audit.log
+}
+PROMPT_COMMAND='LOG_STARTED=1'
+trap log_command DEBUG
+# === End Shell Audit Logging ===
+EOF
+
+### -------------------------------------------------
+### 7. Sudo activity tracking
+### -------------------------------------------------
+echo "🧾 Configuring sudo logging..."
+
+if ! grep -q ORIGINAL_USER /etc/sudoers; then
+  echo -e "\n## Track original user\nDefaults always_set_home\nDefaults env_keep += \"ORIGINAL_USER\"" >> /etc/sudoers
+fi
+
+### -------------------------------------------------
+### 8. Custom SSH MOTD banner
+### -------------------------------------------------
+echo "🎨 Installing login banner..."
+
+chmod -x /etc/update-motd.d/* || true
+
+cat <<'BANNER' > /etc/update-motd.d/99-stackflow-banner
+#!/bin/bash
+login_user=$(logname 2>/dev/null || echo "unknown")
+
+cat <<'EOF' | /usr/games/lolcat --force
+ $$$$$$\    $$\                         $$\       $$$$$$$$\ $$\
+$$  __$$\   $$ |                        $$ |      $$  _____|$$ |
+$$ /  \__|$$$$$$\    $$$$$$\   $$$$$$$\ $$ |  $$\ $$ |      $$ | $$$$$$\  $$\  $$\  $$\
+\$$$$$$\  \_$$  _|   \____$$\ $$  _____|$$ | $$  |$$$$$\    $$ |$$  __$$\ $$ | $$ | $$ |
+ \____$$\   $$ |     $$$$$$$ |$$ /      $$$$$$  / $$  __|   $$ |$$ /  $$ |$$ | $$ | $$ |
+$$\   $$ |  $$ |$$\ $$  __$$ |$$ |      $$  _$$<  $$ |      $$ |$$ |  $$ |$$ | $$ | $$ |
+\$$$$$$  |  \$$$$  |\$$$$$$$ |\$$$$$$$\ $$ | \$$\ $$ |      $$ |\$$$$$$  |\$$$$$\$$$$  |
+ \______/    \____/  \_______| \_______|\__|  \__|\__|      \__| \______/  \_____\____/
+EOF
+
+echo ""
+/usr/bin/screenfetch 2>/dev/null | /usr/games/lolcat --force || true
+echo ""
+echo "*******************************************************************" | /usr/games/lolcat
+echo "*  🚀 Welcome to Ubuntu Server                                   *" | /usr/games/lolcat
+echo "*  🔒 Authorized use only. All activity may be monitored.         *" | /usr/games/lolcat
+echo "*******************************************************************" | /usr/games/lolcat
+echo ""
+BANNER
+
+chmod +x /etc/update-motd.d/99-stackflow-banner
+sed -i 's/^PrintMotd no/PrintMotd yes/' /etc/ssh/sshd_config || true
+systemctl restart ssh
+
+### -------------------------------------------------
+### 9. Enable QEMU guest agent
+### -------------------------------------------------
+echo "🖥️ Enabling QEMU Guest Agent..."
+
+systemctl enable qemu-guest-agent
+systemctl start qemu-guest-agent
+
+### -------------------------------------------------
+### 10. Bash history timestamps
+### -------------------------------------------------
+echo "🕒 Enabling history timestamps..."
+
+grep -q HISTTIMEFORMAT /etc/bash.bashrc || \
+echo 'HISTTIMEFORMAT="%F %T "' >> /etc/bash.bashrc
+
+### -------------------------------------------------
+### 11. Swap (idempotent)
+### -------------------------------------------------
+echo "💾 Configuring swap..."
+
+if ! swapon --show | grep -q /swap; then
+  dd if=/dev/zero of=/swap bs=1MiB count=4196
+  chmod 600 /swap
+  mkswap /swap
+  swapon /swap
+  echo "/swap swap swap sw 0 0" >> /etc/fstab
+fi
+
+### -------------------------------------------------
+### DONE
+### -------------------------------------------------
+echo ""
+echo "✅ Ubuntu initial setup completed successfully!"
+echo "=========================================="
+

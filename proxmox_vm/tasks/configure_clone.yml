@@ -1,0 +1,96 @@
+---
+# Tasks to configure a single cloned VM sequentially
+# Expects `current_clone` variable (GUI format)
+
+# --- Set resources: memory, CPU, disk ---
+- name: Set VM memory
+  command: >
+    qm set {{ current_clone.clonevmid }} --memory {{ current_clone.clonememory }}
+  become: true
+
+- name: Set VM CPU cores
+  command: >
+    qm set {{ current_clone.clonevmid }} --cores {{ current_clone.clonecores }}
+  become: true
+
+- name: Resize main disk (base + clone extra size)
+  command: >
+    qm resize {{ current_clone.clonevmid }} scsi0 +{{ current_clone.clonedisksize }}G
+  become: true
+
+# --- Start the VM ---
+- name: Start cloned VM
+  command: >
+    pvesh create /nodes/{{ source_node }}/qemu/{{ current_clone.clonevmid }}/status/start
+  become: true
+
+# --- Add to dynamic inventory (as you kept) ---
+- name: Add current clone to dynamic inventory
+  add_host:
+    name: "{{ current_clone.clonevmname }}"
+    ansible_host: "{{ ipaddr.split('/')[0] }}"
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: "/home/dheeraj/.ssh/id_ed25519"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_port: "{{ ssh_port }}"
+    groups: cloned_vms
+
+# --- Wait for SSH ---
+- name: Wait for SSH on current clone
+  wait_for:
+    host: "{{ ipaddr.split('/')[0] }}"
+    port: "{{ ssh_port }}"
+    timeout: 300
+    state: started
+
+# --- Configure network inside VM ---
+- name: Update IP address in 50-cloud-init.yaml for current cloned VM
+  ansible.builtin.shell: |
+    sed -i 's/^\s*- .*\/[0-9]\+$/            - {{ current_clone.cloneipaddr | regex_replace("/", "\\/") }}/' /etc/netplan/50-cloud-init.yaml
+  delegate_to: "{{ current_clone.clonevmname }}"
+  become: true
+
+- name: Update hostname inside VM
+  ansible.builtin.command: hostnamectl set-hostname {{ current_clone.clonevmname }}
+  delegate_to: "{{ current_clone.clonevmname }}"
+  become: true
+
+- name: Resize root partition /dev/sda1
+  ansible.builtin.shell: growpart /dev/sda 1
+  delegate_to: "{{ current_clone.clonevmname }}"
+  become: true
+  ignore_errors: yes
+
+- name: Resize filesystem on /dev/sda1
+  ansible.builtin.shell: resize2fs /dev/sda1
+  delegate_to: "{{ current_clone.clonevmname }}"
+  become: true
+  ignore_errors: yes
+
+- name: Install 'at' package
+  ansible.builtin.apt:
+    name: at
+    state: present
+    update_cache: yes
+  delegate_to: "{{ current_clone.clonevmname }}"
+  become: true
+
+- name: Apply updated cloud-init network
+  ansible.builtin.shell: echo "netplan apply" | at now
+  delegate_to: "{{ current_clone.clonevmname }}"
+  become: true
+  ignore_errors: yes    
+
+- name: Migrate cloned VM to desired node
+  command: qm migrate {{ current_clone.clonevmid }} {{ current_clone.clonetarget_node }} --online
+  become: true
+  when: current_clone.clonetarget_node is defined and current_clone.clonetarget_node != source_node
+    
+- name: Wait for new IP "{{ current_clone.cloneipaddr.split('/')[0] }}" to respond
+  wait_for:
+    host: "{{ current_clone.cloneipaddr.split('/')[0] }}"
+    port: "{{ ssh_port }}"
+    timeout: 300
+    state: started
+  ignore_errors: yes
+

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VM Creation Logs</title>
+</head>
+<body>
+    <h1>Proxmox VM Creation Logs</h1>
+    <pre id="log"></pre>
+
+    <script>
+        const log = document.getElementById("log");
+        const source = new EventSource("/stream");
+
+        source.onmessage = function(event) {
+            log.textContent += event.data + "\n";
+            log.scrollTop = log.scrollHeight; // auto-scroll
+        };
+
+        source.onerror = function() {
+            source.close();
+        };
+    </script>
+</body>
+</html>
+

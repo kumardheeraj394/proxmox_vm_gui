@@ -1,0 +1,70 @@
+#cloud-config
+hostname: {{ vmname }}
+manage_etc_hosts: true
+
+users:
+  - default
+
+  # =========================
+  # UBUNTU USER (ALL KEYS)
+  # =========================
+  - name: ubuntu
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKW9bnj/PvGNa3Rl3I3Q4JPw1hTz+y15KJCmEY4QVPGO bhaskar.soni@server.net@user
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDOIJSLHiixh3Vsb5Mh9902C3j4QIKu5xZ/qKEBVnt6x root@fspl-mkt35
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINy9zmSEjDZKXmmNwZtzEMIBToaCAU40+0s0LUsRZQ2I eddsa-key-20220406
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILUIhcHmWG/mZAsqodL7/cAsqra3dg8oMculD9T1biRC dheeraj.kumar@Global.local@fspl-cs
+
+  # =========================
+  # INDIVIDUAL USERS
+  # =========================
+  - name: bhaskar
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKW9bnj/PvGNa3Rl3I3Q4JPw1hTz+y15KJCmEY4QVPGO bhaskar.soni@server.net@user
+
+  - name: shrikant
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDOIJSLHiixh3Vsb5Mh9902C3j4QIKu5xZ/qKEBVnt6x root@fspl-mkt35
+
+  - name: jassi
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINy9zmSEjDZKXmmNwZtzEMIBToaCAU40+0s0LUsRZQ2I eddsa-key-20220406
+
+  - name: dheeraj
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILUIhcHmWG/mZAsqodL7/cAsqra3dg8oMculD9T1biRC dheeraj.kumar@Global.local@fspl-cs
+
+  - name: deepak
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINaKvrk5V68YZAgDNIY5lOCZgvpcQfvUq0nkKL+tTrwM SERVER0\dbirla@fspl-deepakbirla
+
+  - name: harpreet
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFes0VkRuMk7uQAIFBmLdZEghfy8JxzInd9olYpPkS3t root@Harpreets-MacBook-Pro-2.local
+
+ssh_pwauth: false
+disable_root: true
+package_update: true
+package_upgrade: false
+

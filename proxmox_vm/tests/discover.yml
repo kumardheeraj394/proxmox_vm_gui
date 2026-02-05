@@ -1,0 +1,33 @@
+---
+- hosts: proxmox
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Get Proxmox cluster node names
+      shell: |
+        pvecm nodes | tail -n +5 | awk '{gsub(/ *(local)/,""); print $3}' | grep -v '^$'
+      register: nodes
+      changed_when: false
+
+    - name: Get storage list
+      command: pvesm status
+      register: storage
+      changed_when: false
+
+    - name: Get image list
+      shell: ls /var/lib/vz/template/iso/
+      register: images
+      changed_when: false
+
+    - name: Write discovery JSON on Flask host
+      delegate_to: localhost
+      copy:
+        dest: /tmp/proxmox_discover.json
+        content: |
+          {
+            "nodes": {{ nodes.stdout_lines | to_json }},
+            "storage": {{ storage.stdout_lines[1:] | map('split') | map('first') | list | to_json }},
+            "images": {{ images.stdout_lines | to_json }}
+          }
+

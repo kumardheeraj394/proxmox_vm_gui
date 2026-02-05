@@ -1,0 +1,151 @@
+from flask import Flask, render_template, request, Response, jsonify
+import json, subprocess, os, time, traceback, threading, socket
+
+app = Flask(__name__)
+
+# Paths
+DISCOVER_JSON = "/tmp/proxmox_discover.json"
+PLAYBOOK_PATH = "proxmox_vm/tests/test.yml"
+INVENTORY_PATH = "proxmox_vm/tests/inventory"
+LOGS_DIR = "/tmp/proxmox_logs"
+
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+# -----------------------------
+# Utility to check if SSH is reachable
+# -----------------------------
+def ssh_up(host, port=22, timeout=1):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except:
+        return False
+
+# -----------------------------
+# Main page
+# -----------------------------
+@app.route("/", methods=["GET"])
+def index():
+    data = {"nodes": [], "storage": [], "images": []}
+    if os.path.exists(DISCOVER_JSON):
+        try:
+            with open(DISCOVER_JSON) as f:
+                data = json.load(f)
+        except Exception as e:
+            print("⚠️ Failed to read discovery JSON:", e)
+
+    return render_template(
+        "form.html",
+        nodes=data.get("nodes", []),
+        storage=data.get("storage", []),
+        images=data.get("images", []),
+        ssh_port=10457
+    )
+
+# -----------------------------
+# Start VM creation (AJAX)
+# -----------------------------
+@app.route("/run", methods=["POST"])
+def run():
+    try:
+        payload = request.json
+        timestamp = int(time.time())
+        vars_file = os.path.join(LOGS_DIR, f"proxmox_{timestamp}.json")
+        with open(vars_file, "w") as f:
+            json.dump(payload, f, indent=2)
+
+        # Start playbook in background thread
+        threading.Thread(target=run_playbook, args=(vars_file,), daemon=True).start()
+        return {"status": "ok", "vars_file": os.path.basename(vars_file)}
+    except Exception:
+        return {"status": "error", "error": traceback.format_exc()}, 500
+
+# -----------------------------
+# Run ansible-playbook in background
+# -----------------------------
+def run_playbook(vars_path):
+    log_path = vars_path.replace(".json", ".log")
+    cmd = [
+        "ansible-playbook",
+        PLAYBOOK_PATH,
+        "-i", INVENTORY_PATH,
+        "--extra-vars", f"@{vars_path}"
+    ]
+    with open(log_path, "w") as logfile:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        for line in iter(process.stdout.readline, ""):
+            logfile.write(line)
+            logfile.flush()
+        process.stdout.close()
+        process.wait()
+
+# -----------------------------
+# Stream logs via SSE
+# -----------------------------
+@app.route("/stream/<vars_file>")
+def stream(vars_file):
+    vars_path = os.path.join(LOGS_DIR, vars_file)
+    log_path = vars_path.replace(".json", ".log")
+
+    def generate():
+        yield "data: Starting playbook...\n\n"
+        last_pos = 0
+        while True:
+            if os.path.exists(log_path):
+                with open(log_path) as f:
+                    f.seek(last_pos)
+                    for line in f:
+                        yield f"data: {line.rstrip()}\n\n"
+                    last_pos = f.tell()
+
+            # Stop streaming if playbook finished
+            done = False
+            if os.path.exists(log_path):
+                with open(log_path) as f:
+                    content = f.read()
+                    if "PLAY RECAP" in content or "PLAYBOOK FINISHED" in content:
+                        done = True
+            if done:
+                yield "data: PLAYBOOK FINISHED\n\n"
+                break
+            time.sleep(1)
+    return Response(generate(), mimetype="text/event-stream")
+
+# -----------------------------
+# Get VM status for GUI (green if SSH reachable)
+# -----------------------------
+@app.route("/status/<vars_file>")
+def status(vars_file):
+    vars_path = os.path.join(LOGS_DIR, vars_file)
+    if not os.path.exists(vars_path):
+        return jsonify([])
+
+    with open(vars_path) as f:
+        data = json.load(f)
+
+    vms = []
+    # Include base VM if run_single_vm
+    if data.get("run_single_vm"):
+        vms.append({
+            "vmname": data["vmname"],
+            "ipaddr": data["ipaddr"],
+            "status": "green" if ssh_up(data["ipaddr"].split("/")[0], data["ssh_port"]) else "red"
+        })
+    # Include clones
+    for c in data.get("clones", []):
+        vms.append({
+            "vmname": c["clonevmname"],
+            "ipaddr": c["cloneipaddr"],
+            "status": "green" if ssh_up(c["cloneipaddr"].split("/")[0], data["ssh_port"]) else "red"
+        })
+    return jsonify(vms)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=True, threaded=True)
+

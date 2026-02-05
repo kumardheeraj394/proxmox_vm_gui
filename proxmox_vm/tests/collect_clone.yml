@@ -1,0 +1,42 @@
+---
+- name: Clone VMID
+  pause:
+    prompt: "Enter VMID for clone {{ clone_index | string }}"
+  register: clone_vmid
+
+- name: Clone name
+  pause:
+    prompt: "Enter VM name for clone {{ clone_index | string }}"
+  register: clone_name
+
+- name: Clone IP (CIDR)
+  pause:
+    prompt: "Enter IP for clone {{ clone_index | string }} (e.g. 10.0.25.135/22)"
+  register: clone_ip
+
+- name: Clone Memory (MB)
+  pause:
+    prompt: "Enter memory (MB) for clone {{ clone_index | string }} [4096]"
+  register: clone_memory
+
+- name: Clone CPU cores
+  pause:
+    prompt: "Enter CPU cores for clone {{ clone_index | string }} [2]"
+  register: clone_cores
+
+- name: Clone disk size (additional GB)
+  pause:
+    prompt: "Enter additional disk size for clone {{ clone_index }}"
+  register: clone_disksize
+
+- name: Append clone to list
+  set_fact:
+    clones: "{{ clones + [ {
+      'vmid': clone_vmid.user_input | int,
+      'vmname': clone_name.user_input | trim,
+      'ipaddr': clone_ip.user_input | trim,
+      'memory': clone_memory.user_input | default(4096) | int,
+      'cores': clone_cores.user_input | default(2) | int,
+      'disksize': clone_disksize.user_input | int
+    } ] }}"
+

@@ -1,0 +1,82 @@
+---
+- hosts: proxmox
+  gather_facts: true
+  become: true
+  serial: 1
+
+  tasks:
+    # -------------------------------------------------
+    # Load base VM variables from GUI/CLI
+    # -------------------------------------------------
+    - name: Load base VM variables
+      set_fact:
+        target_node: "{{ target_node }}"
+        vmid: "{{ vmid | int }}"
+        vmname: "{{ vmname | default('ubuntu-ci') }}"
+        memory: "{{ memory | default(4096) | int }}"
+        cores: "{{ cores | default(2) | int }}"
+        storage: "{{ storage }}"
+        vlan_id: "{{ vlan_id | default('0') }}"
+        image: "{{ image }}"
+        ipaddr: "{{ ipaddr }}"
+        gateway: "{{ gateway | default('10.10.10.1') }}"
+        disksize: "{{ disksize | default(20) | int }}"
+        ssh_port: "{{ ssh_port | default(22) | int }}"
+        ciuser: "{{ ciuser | default('ubuntu') }}"
+        cipassword: "{{ cipassword | default('Admin@112233') }}"
+        clones: "{{ clones | default([]) }}"
+
+    # -------------------------------------------------
+    # Debug base VM
+    # -------------------------------------------------
+    - name: Show base VM configuration
+      debug:
+        msg:
+          target_node: "{{ target_node }}"
+          vmid: "{{ vmid }}"
+          vmname: "{{ vmname }}"
+          memory: "{{ memory }}"
+          cores: "{{ cores }}"
+          storage: "{{ storage }}"
+          vlan_id: "{{ vlan_id }}"
+          image: "{{ image }}"
+          ipaddr: "{{ ipaddr }}"
+          gateway: "{{ gateway }}"
+          disksize: "{{ disksize }}"
+          ssh_port: "{{ ssh_port }}"
+          ciuser: "{{ ciuser }}"
+          cipassword: "{{ cipassword }}"
+          clones: "{{ clones }}"
+
+    # -------------------------------------------------
+    # Create base VM
+    # -------------------------------------------------
+    - name: Create base VM
+      include_role:
+        name: proxmox_vm
+      vars:
+        target_node: "{{ target_node }}"
+        vmid: "{{ vmid }}"
+        vmname: "{{ vmname }}"
+        memory: "{{ memory }}"
+        cores: "{{ cores }}"
+        storage: "{{ storage }}"
+        vlan_id: "{{ vlan_id }}"
+        image: "{{ image }}"
+        ipaddr: "{{ ipaddr }}"
+        gateway: "{{ gateway }}"
+        disksize: "{{ disksize }}"
+        ssh_port: "{{ ssh_port }}"
+        ciuser: "{{ ciuser }}"
+        cipassword: "{{ cipassword }}"
+
+    # -------------------------------------------------
+    # Create clone VMs
+    # -------------------------------------------------
+    - name: Create and configure clone VMs
+      include_tasks: clone_vm.yml
+      loop: "{{ clones }}"
+      loop_control:
+        loop_var: current_clone
+      vars:
+        run_only_clone: true          

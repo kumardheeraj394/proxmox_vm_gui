@@ -1,0 +1,60 @@
+---
+# ===============================
+# Clone VMs from an existing VM
+# ===============================
+
+# --- Step 0: Get cluster VM list in JSON ---
+- name: Get cluster VM list
+  command: pvesh get /cluster/resources --type vm --output-format json
+  register: cluster_vms
+  changed_when: false
+
+- name: Convert cluster VM list to JSON safely
+  set_fact:
+    cluster_vm_json: "{{ cluster_vms.stdout | from_json }}"
+
+# --- Step 1: Determine source VM node (BASE VM) ---
+- name: Set source node for cloning
+  set_fact:
+    source_node: >-
+      {{
+        (cluster_vm_json
+        | selectattr('vmid','equalto', vmid | int)
+        | map(attribute='node')
+        | list
+       )[0] | default('')
+      }}
+
+- name: Fail if source VM not found
+  fail:
+    msg: "VM {{ vmid }} not found in cluster resources!"
+  when: source_node == ''
+
+- name: Debug source node
+  debug:
+    msg: "Base VM {{ vmid }} is on node {{ source_node }}"
+
+# --- Step 2: Show clone info ---
+- name: Show clone info
+  debug:
+    msg: >
+      Cloning VM {{ vmid }}
+      -> {{ item.clonevmid }}
+      ({{ item.clonevmname }}, {{ item.cloneipaddr }})
+  loop: "{{ clones }}"
+  loop_control:
+    label: "{{ item.clonevmid }}"
+
+# --- Step 3: Clone each VM using pvesh ---
+- name: Clone VM via pvesh
+  shell: |
+    echo "Starting clone {{ item.clonevmid }} ({{ item.clonevmname }})"
+    pvesh create /nodes/{{ source_node }}/qemu/{{ vmid }}/clone \
+      -newid {{ item.clonevmid }} \
+      -name {{ item.clonevmname }}
+    echo "Finished clone {{ item.clonevmid }}"
+  loop: "{{ clones }}"
+  loop_control:
+    label: "{{ item.clonevmid }}"
+  become: true
+

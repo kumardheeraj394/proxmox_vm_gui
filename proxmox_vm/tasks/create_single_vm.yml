@@ -1,0 +1,240 @@
+---
+# ===============================
+# PRE-CHECKS
+# ===============================
+- name: Check if VM already exists
+  command: qm status {{ vmid }}
+  register: vm_status
+  ignore_errors: true
+  changed_when: false
+
+- name: Fail if VM ID already exists
+  fail:
+    msg: "VM with ID {{ vmid }} already exists."
+  when: vm_status.rc == 0
+
+- name: Validate storage exists
+  command: pvesm status
+  register: pvesm_status
+  changed_when: false
+
+- name: Fail if selected storage is invalid
+  fail:
+    msg: "Storage '{{ storage }}' does not exist."
+  when: storage not in (pvesm_status.stdout_lines | map('split') | map('first') | list)
+
+- name: Determine storage type
+  set_fact:
+    storage_type: >-
+      {% set st = (pvesm_status.stdout_lines | map('split') | selectattr('0','equalto',storage) | list)[0][1] %}
+      {{ st }}
+
+- name: Normalize storage type
+  set_fact:
+    storage_type: "{{ storage_type | trim | lower }}"
+
+- name: Debug storage type
+  debug:
+    msg: "Storage {{ storage }} is of type {{ storage_type }}"
+
+# ===============================
+# VM CREATION
+# ===============================
+- name: Create VM
+  command: >
+    qm create {{ vmid }}
+    --name {{ vmname }}
+    --memory {{ memory }}
+    --cores {{ cores }}
+    --net0 virtio,bridge={{ bridge }}{% if vlan_id != '0' %},tag={{ vlan_id }}{% endif %}
+    --scsihw virtio-scsi-pci
+    --bios ovmf
+    --agent enabled=1
+
+# ===============================
+# CREATE / IMPORT MAIN DISK
+# ===============================
+# Dir/NFS: create empty disk
+- name: Create main disk for dir/nfs storage
+  command: qm set {{ vmid }} --scsi0 {{ storage }}:{{ disksize }}G
+  when: storage_type in ['dir','nfs']
+
+# LVM / LVM-thin / LVM-thick: import cloud image as raw
+- name: Import cloud image for LVM
+  command: qm importdisk {{ vmid }} /mnt/pve/ISO/template/iso/{{ image }} {{ storage }} --format raw
+  register: importdisk
+  retries: 3
+  delay: 5
+  until: importdisk.rc == 0
+  when: storage_type in ['lvmthin','lvm-thin','lvm-thick','lvm']
+
+# LVM: detect actual imported disk name
+- name: Attach imported LVM disk as scsi0
+  command: qm set {{ vmid }} --scsi0 {{ storage }}:vm-{{ vmid }}-disk-0,format=raw
+  when: storage_type in ['lvmthin','lvm-thin','lvm-thick','lvm']
+
+
+    #- name: Attach imported disk as scsi0
+    #command: qm set {{ vmid }} --scsi0 {{ storage }}:{{ imported_disk.stdout }},format=raw
+    #when: storage_type in ['lvmthin','lvm-thin','lvm-thick','lvm']
+
+# Debug VM config to ensure disk attached
+- name: Show VM configuration
+  command: cat /etc/pve/qemu-server/{{ vmid }}.conf
+
+# ===============================
+# CLOUD-INIT CONFIGURATION
+# ===============================
+- name: Add cloud-init disk
+  command: qm set {{ vmid }} --ide2 {{ storage }}:cloudinit
+
+- name: Ensure snippets directory exists
+  file:
+    path: /var/lib/vz/snippets
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'    
+
+- name: Render cloud-init user-data
+  template:
+    src: cloudinit-userdata.yml.j2
+    dest: /var/lib/vz/snippets/userdata-{{ vmid }}.yml
+    mode: '0644'
+  vars:
+    ciuser: "{{ ciuser }}"
+    cipassword: "{{ cipassword }}"
+    ipaddr: "{{ ipaddr }}"
+    gateway: "{{ gateway }}"
+
+- name: Attach cloud-init user-data
+  command: >
+    qm set {{ vmid }}
+    --cicustom user=local:snippets/userdata-{{ vmid }}.yml
+
+- name: Configure cloud-init networking
+  command: >
+    qm set {{ vmid }}
+    --ipconfig0 ip={{ ipaddr }},gw={{ gateway }}
+    --nameserver 8.8.8.8
+
+# ===============================
+# EFI + BOOT
+# ===============================
+- name: Add EFI disk
+  command: qm set {{ vmid }} --efidisk0 {{ storage }}:4
+
+- name: Set boot order
+  command: qm set {{ vmid }} --boot order=scsi0
+  when: storage_type in ['dir','nfs','lvmthin','lvm-thick','lvm-thin','lvm']
+
+# ===============================
+# START VM
+# ===============================
+- name: Start VM
+  command: qm start {{ vmid }}
+
+- name: Wait for cloud-init to finish
+  pause:
+    seconds: 150
+
+- name: Resize main disk
+  command: qm resize {{ vmid }} scsi0 +{{ disksize }}G      
+
+# ===============================
+# FINAL REBOOT & SSH CHECK
+# ===============================
+- name: Reboot VM
+  command: qm reboot {{ vmid }}
+
+- name: Wait for SSH to become available
+  wait_for:
+    host: "{{ ipaddr.split('/')[0] }}"
+    port: 22
+    timeout: 150
+    state: started
+
+# ===============================
+# DYNAMIC INVENTORY
+# ===============================
+- name: Add VM to dynamic inventory
+  add_host:
+    name: "vm_{{ vmid }}"
+    groups: provisioned_vms
+    ansible_host: "{{ ipaddr.split('/')[0] }}"
+    ansible_user: "{{ ciuser }}"
+    ansible_ssh_private_key_file: "/home/dheeraj/.ssh/id_ed25519"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+# ===============================
+# VM POST-CONFIGURATION
+# ===============================
+- name: Change ubuntu password using chpasswd
+  ansible.builtin.command: >
+    bash -c "echo '{{ ciuser }}:{{ cipassword }}' | chpasswd"
+  delegate_to: "vm_{{ vmid }}"
+  become: true
+
+- name: Copy setup script to VM
+  template:
+    src: ubuntu_setup.j2
+    dest: /tmp/ubuntu_setup.sh
+    mode: '0755'
+  delegate_to: "vm_{{ vmid }}"
+
+- name: Copy Network script to VM
+  become: true
+  template:
+    src: 50-cloud-init.yaml.j2
+    dest: /etc/netplan/50-cloud-init.yaml
+    owner: root
+    group: root      
+    mode: '0600'
+  delegate_to: "vm_{{ vmid }}"    
+
+- name: Run setup script in VM
+  command: bash /tmp/ubuntu_setup.sh
+  delegate_to: "vm_{{ vmid }}"
+  become: true
+
+- name: Remove network device from VM
+  command: qm set {{ vmid }} --delete net0
+
+- name: Add network device to VM
+  command: >
+    qm set {{ vmid }}
+    --net0 virtio,bridge={{ bridge }}{% if vlan_id | int != 0 %},tag={{ vlan_id }}{% endif %}
+
+- name: Wait 30 seconds before running setup
+  pause:
+    seconds: 30
+
+- name: stop main vm
+  command: >
+    qm stop {{ vmid }}    
+
+- name: Remove EFI disk from VM
+  command: >
+    qm set {{ vmid }} --delete efidisk0
+
+- name: Remove EFI and Cloud-Init disks from VM
+  command: >
+    qm set {{ vmid }} --delete efidisk0 --delete ide2
+
+    
+# ===============================
+# DONE
+# ===============================
+- name: VM ready
+  debug:
+    msg:
+      - "VM {{ vmid }} is ready"
+      - "User: {{ ciuser }}"
+      - "IP: {{ ipaddr }}"
+      - "Storage: {{ storage }}"
+      - "VLAN: {{ vlan_id }}"
+      - "SSH Port: {{ ssh_port }}"
+
+#- name: Migrate VM to selected node
+#  command: qm migrate {{ vmid }} {{ target_node }} --online
+#  become: true   

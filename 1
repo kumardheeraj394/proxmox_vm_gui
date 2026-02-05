@@ -1,0 +1,99 @@
+from flask import Flask, render_template, request, Response
+import json, subprocess, os, time, socket
+
+app = Flask(__name__)
+
+# Paths
+DISCOVER_JSON = "/tmp/proxmox_discover.json"
+PLAYBOOK_PATH = "proxmox_vm/tests/test.yml"
+INVENTORY_PATH = "proxmox_vm/tests/inventory"
+LOGS_DIR = "/tmp/proxmox_logs"
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+
+def check_ssh(host, port=22, timeout=2):
+    """Return True if SSH is reachable"""
+    try:
+        s = socket.create_connection((host.split("/")[0], port), timeout=timeout)
+        s.close()
+        return True
+    except:
+        return False
+
+
+@app.route("/")
+def index():
+    data = {"nodes": [], "storage": [], "images": []}
+    if os.path.exists(DISCOVER_JSON):
+        with open(DISCOVER_JSON) as f:
+            data = json.load(f)
+    return render_template(
+        "form.html",
+        nodes=data.get("nodes", []),
+        storage=data.get("storage", []),
+        images=data.get("images", []),
+        ssh_port=10457
+    )
+
+
+@app.route("/run", methods=["POST"])
+def run():
+    """Receive form JSON and start Ansible playbook"""
+    payload = request.json
+    timestamp = int(time.time())
+    vars_file = os.path.join(LOGS_DIR, f"proxmox_{timestamp}.json")
+    with open(vars_file, "w") as f:
+        json.dump(payload, f, indent=2)
+    return {"status": "ok", "vars_file": os.path.basename(vars_file)}
+
+
+@app.route("/stream/<vars_file>")
+def stream(vars_file):
+    """Stream Ansible output via SSE"""
+    vars_path = os.path.join(LOGS_DIR, vars_file)
+    cmd = [
+        "ansible-playbook",
+        PLAYBOOK_PATH,
+        "-i", INVENTORY_PATH,
+        "--extra-vars", f"@{vars_path}"
+    ]
+
+    def generate():
+        yield "data: Starting playbook...\n\n"
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        created_vms = []
+
+        for line in iter(process.stdout.readline, ""):
+            yield f"data: {line.rstrip()}\n\n"
+            # Detect VM creation lines (example: "VM 101 created")
+            if "VM" in line and "created" in line:
+                parts = line.strip().split()
+                try:
+                    vmid = parts[1]
+                    created_vms.append({"vmid": vmid})
+                except:
+                    pass
+
+        process.wait()
+        yield f"data: PLAYBOOK FINISHED (rc={process.returncode})\n\n"
+
+        # Check SSH for created VMs
+        for vm in created_vms:
+            ip = vm.get("ipaddr")
+            vm["ssh"] = check_ssh(ip, port=int(vm.get("ssh_port", 22)))
+        yield f"data: CREATED_VMS: {json.dumps(created_vms)}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=True, threaded=True)
+
