@@ -4,10 +4,25 @@
 <meta charset="UTF-8">
 <title>Proxmox VM GUI</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+
 <style>
-body { padding:20px; background:#f9f9f9; font-size: 1rem; }
-.card { border-radius:8px; box-shadow:0 0 5px rgba(0,0,0,0.1); margin-bottom:20px; }
-.clone-block { margin-top:15px; padding:15px; border:1px solid #ccc; border-radius:8px; background:#fff; }
+body {
+  padding:20px;
+  background:#f9f9f9;
+  font-size: 1rem;
+}
+.card {
+  border-radius:8px;
+  box-shadow:0 0 5px rgba(0,0,0,0.1);
+  margin-bottom:20px;
+}
+.clone-block {
+  margin-top:15px;
+  padding:15px;
+  border:1px solid #ccc;
+  border-radius:8px;
+  background:#fff;
+}
 #console {
   background:#000;
   color:#0f0;
@@ -18,14 +33,13 @@ body { padding:20px; background:#f9f9f9; font-size: 1rem; }
   white-space:pre-wrap;
   border-radius:6px;
 }
-#status { float:right; width:30%; }
-#console-container { width:65%; float:left; }
 </style>
 </head>
-<body>
 
+<body>
 <div class="container-fluid">
-<h2>Stackflow StackFlow Virtualization Manager (SVM)</h2>
+
+<h2>StackFlow Virtualization Manager (SVM)</h2>
 
 <!-- Back Button -->
 <div class="mb-3">
@@ -34,112 +48,121 @@ body { padding:20px; background:#f9f9f9; font-size: 1rem; }
   </a>
 </div>
 
-<div class="row">
-  <div id="console-container">
+<form id="vmForm">
 
-    <form id="vmForm">
-      <!-- ================= BASE VM ================= -->
-      <div class="card p-3">
-        <h4>Base VM</h4>
+<!-- ================= BASE VM ================= -->
+<div class="card p-3">
+  <h4>Base VM</h4>
 
-        <div class="row g-3 mb-2">
-          <div class="col-md-4">
-            <label class="form-label">Base VM Type</label>
-            <select class="form-select" name="base_vm_type" required>
-              <option value="new">New VM</option>
-              <option value="template">Template</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="row g-3 mb-2">
-          <div class="col-md-4">
-            <label class="form-label">Storage</label>
-            <select class="form-select" name="storage" required>
-              {% for s in storage %}
-              <option value="{{ s }}">{{ s }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Image</label>
-            <select class="form-select" name="image" required>
-              {% for img in images %}
-              <option value="{{ img }}">{{ img }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Target Node</label>
-            <select class="form-select" name="target_node" required>
-              {% for n in nodes %}
-              <option value="{{ n }}">{{ n }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <div class="row g-3 mb-2">
-          <div class="col-md-3"><label>VM ID</label><input type="number" class="form-control" name="vmid" value="1000" required></div>
-          <div class="col-md-5"><label>VM Name</label><input type="text" class="form-control" name="vmname" value="Template-ubuntu" required></div>
-          <div class="col-md-4"><label>Memory</label><input type="number" class="form-control" name="memory" value="4096" required></div>
-        </div>
-
-        <div class="row g-3 mb-2">
-          <div class="col-md-3"><label>CPU Cores</label><input type="number" class="form-control" name="cores" value="2" required></div>
-          <div class="col-md-3"><label>Disk Size (GB)</label><input type="number" class="form-control" name="disksize" value="20" required></div>
-          <div class="col-md-3"><label>IP (CIDR)</label><input type="text" class="form-control" name="ipaddr" value="10.0.25.126/22" required></div>
-          <div class="col-md-3"><label>Gateway</label><input type="text" class="form-control" name="gateway" value="10.0.24.1" required></div>
-        </div>
-
-        <div class="row g-3 mb-2">
-          <div class="col-md-4">
-            <label>VLAN ID</label>
-            <input
-              type="number"
-              class="form-control"
-              name="vlan_id"
-              value="0"
-              min="0"
-              max="4094"
-              required
-            >
-          </div>
-          <div class="col-md-4">
-            <label>SSH Port</label>
-            <input type="number" class="form-control" name="ssh_port" value="{{ ssh_port }}" required>
-          </div>
-        </div>
-      </div>
-
-      <!-- ================= CLONES ================= -->
-      <div class="card p-3">
-        <h4>Clones</h4>
-        <label>Number of Clones</label>
-        <input type="number" class="form-control mb-2" id="clone_count" min="0" value="0">
-        <div id="clones_container"></div>
-      </div>
-
-      <button type="submit" class="btn btn-primary mt-3">Create VM(s)</button>
-    </form>
-
-    <!-- ================= LOG VIEWER ================= -->
-    <div class="d-flex justify-content-between align-items-center mt-3">
-      <h4>Playbook Log</h4>
-      <button class="btn btn-secondary btn-sm" id="viewLogBtn" disabled>
-        View Log (Tail)
-      </button>
+  <div class="row g-3 mb-2">
+    <div class="col-md-4">
+      <label class="form-label">Base VM Type</label>
+      <select class="form-select" name="base_vm_type" required>
+        <option value="new">New VM</option>
+        <option value="template">Template</option>
+      </select>
     </div>
-    <div id="console">Waiting...</div>
-
   </div>
 
-  <!-- ================= STATUS ================= -->
-  <div id="status">
-    <h4>VM Status</h4>
-    <ul id="vm_status" class="list-group"></ul>
+  <div class="row g-3 mb-2">
+    <div class="col-md-4">
+      <label class="form-label">Storage</label>
+      <select class="form-select" name="storage" required>
+        {% for s in storage %}
+        <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Image</label>
+      <select class="form-select" name="image" required>
+        {% for img in images %}
+        <option value="{{ img }}">{{ img }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Target Node</label>
+      <select class="form-select" name="target_node" required>
+        {% for n in nodes %}
+        <option value="{{ n }}">{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-2">
+    <div class="col-md-3">
+      <label>VM ID</label>
+      <input type="number" class="form-control" name="vmid" value="1000" required>
+    </div>
+    <div class="col-md-5">
+      <label>VM Name</label>
+      <input type="text" class="form-control" name="vmname" value="Template-ubuntu" required>
+    </div>
+    <div class="col-md-4">
+      <label>Memory</label>
+      <input type="number" class="form-control" name="memory" value="4096" required>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-2">
+    <div class="col-md-3">
+      <label>CPU Cores</label>
+      <input type="number" class="form-control" name="cores" value="2" required>
+    </div>
+    <div class="col-md-3">
+      <label>Disk Size (GB)</label>
+      <input type="number" class="form-control" name="disksize" value="20" required>
+    </div>
+    <div class="col-md-3">
+      <label>IP (CIDR)</label>
+      <input type="text" class="form-control" name="ipaddr" value="10.0.25.126/22" required>
+    </div>
+    <div class="col-md-3">
+      <label>Gateway</label>
+      <input type="text" class="form-control" name="gateway" value="10.0.24.1" required>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-2">
+    <div class="col-md-4">
+      <label>VLAN ID</label>
+      <input type="number" class="form-control" name="vlan_id" value="0" min="0" max="4094" required>
+    </div>
+    <div class="col-md-4">
+      <label>SSH Port</label>
+      <input type="number" class="form-control" name="ssh_port" value="{{ ssh_port }}" required>
+    </div>
   </div>
 </div>
+
+<!-- ================= CLONES ================= -->
+<div class="card p-3">
+  <h4>Clones</h4>
+  <label>Number of Clones</label>
+  <input type="number" class="form-control mb-2" id="clone_count" min="0" value="0">
+  <div id="clones_container"></div>
+</div>
+
+<button type="submit" class="btn btn-primary mt-3">
+  Create VM(s)
+</button>
+
+</form>
+
+<!-- ================= LOG VIEWER ================= -->
+<div class="d-flex justify-content-between align-items-center mt-4">
+  <h4>Playbook Log</h4>
+  <button class="btn btn-secondary btn-sm" id="viewLogBtn" disabled>
+    View Log (Tail)
+  </button>
+</div>
+
+<div id="console">Waiting...</div>
+
 </div>
 
 <script>
@@ -147,7 +170,6 @@ const cloneCountInput = document.getElementById("clone_count");
 const clonesContainer = document.getElementById("clones_container");
 const form = document.getElementById("vmForm");
 const consoleBox = document.getElementById("console");
-const vmStatus = document.getElementById("vm_status");
 const viewLogBtn = document.getElementById("viewLogBtn");
 
 let currentVarsFile = null;
@@ -156,7 +178,8 @@ let currentVarsFile = null;
 cloneCountInput.addEventListener("input", () => {
   clonesContainer.innerHTML = "";
   const count = parseInt(cloneCountInput.value || 0);
-  for (let i=1;i<=count;i++){
+
+  for (let i = 1; i <= count; i++) {
     const div = document.createElement("div");
     div.className = "clone-block";
     div.innerHTML = `
@@ -175,23 +198,23 @@ cloneCountInput.addEventListener("input", () => {
             {% endfor %}
           </select>
         </div>
-      </div>`;
+      </div>
+    `;
     clonesContainer.appendChild(div);
   }
 });
 
 /* ---------- Submit ---------- */
-form.addEventListener("submit", async e=>{
+form.addEventListener("submit", async e => {
   e.preventDefault();
   consoleBox.textContent = "Playbook started...\n";
-  vmStatus.innerHTML = "";
   viewLogBtn.disabled = true;
 
   const data = Object.fromEntries(new FormData(form).entries());
   data.clones = [];
-  const count = parseInt(cloneCountInput.value || 0);
 
-  for(let i=1;i<=count;i++){
+  const count = parseInt(cloneCountInput.value || 0);
+  for (let i = 1; i <= count; i++) {
     data.clones.push({
       clonevmid: data[`clone_${i}_vmid`],
       clonevmname: data[`clone_${i}_vmname`],
@@ -204,38 +227,26 @@ form.addEventListener("submit", async e=>{
   }
 
   const res = await fetch("/run", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify(data)
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
   });
 
   const json = await res.json();
   currentVarsFile = json.vars_file;
   viewLogBtn.disabled = false;
-
-  setInterval(async ()=>{
-    const r = await fetch(`/status/${currentVarsFile}`);
-    const vms = await r.json();
-    vmStatus.innerHTML = "";
-    vms.forEach(v=>{
-      const li = document.createElement("li");
-      li.className = "list-group-item";
-      li.style.color = v.status==="green" ? "green" : "red";
-      li.textContent = `${v.vmname} (${v.ipaddr})`;
-      vmStatus.appendChild(li);
-    });
-  }, 5000);
 });
 
 /* ---------- View log ---------- */
-viewLogBtn.addEventListener("click", async ()=>{
-  if(!currentVarsFile) return;
+viewLogBtn.addEventListener("click", async () => {
+  if (!currentVarsFile) return;
   const res = await fetch(`/log/${currentVarsFile}?lines=100`);
   const json = await res.json();
   consoleBox.textContent = json.log;
   consoleBox.scrollTop = consoleBox.scrollHeight;
 });
 </script>
+
 </body>
 </html>
 

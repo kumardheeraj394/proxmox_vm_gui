@@ -5,6 +5,7 @@ from flask import (
 import os, json, time, socket, threading, subprocess, sqlite3, csv, io
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from db import get_db
 
 # ================= CONFIG =================
 app = Flask(__name__)
@@ -20,7 +21,7 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 
 # ================= DB INIT =================
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()
     c = conn.cursor()
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
@@ -238,6 +239,129 @@ def vm_form():
         ssh_port=10457
     )
 
+# ================= RUN PLAYBOOK =================
+@app.route("/run", methods=["POST"])
+@login_required
+def run():
+    payload = request.json
+    ts = int(time.time())
+    vars_file = f"proxmox_{ts}.json"
+    vars_path = os.path.join(LOGS_DIR, vars_file)
+
+    # Save payload for Ansible
+    with open(vars_path, "w") as f:
+        json.dump(payload, f, indent=2)
+
+    # Start Ansible in background
+    threading.Thread(target=run_playbook, args=(vars_path,), daemon=True).start()
+
+    # Insert base VM and clones into DB immediately
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    # Base VM
+    c.execute("""
+        INSERT OR REPLACE INTO vm_status
+        (vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by)
+        VALUES (?,?,?,?,?,?,?,?)
+    """, (
+        payload["vmid"],
+        payload["vmname"],
+        payload["ipaddr"],
+        payload["target_node"],
+        payload["ssh_port"],
+        "UNKNOWN",
+        ts,
+        session["username"]
+    ))
+
+    # Clones
+    for clone in payload.get("clones", []):
+        c.execute("""
+            INSERT OR REPLACE INTO vm_status
+            (vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (
+            clone["clonevmid"],
+            clone["clonevmname"],
+            clone["cloneipaddr"],
+            clone["clonetarget_node"],
+            clone.get("ssh_port", payload["ssh_port"]),
+            "UNKNOWN",
+            ts,
+            session["username"]
+        ))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "ok", "vars_file": vars_file})
+
+def run_playbook(vars_path):
+    """
+    Executes the Ansible playbook with the given vars file.
+    Logs all output to a .log file in LOGS_DIR.
+    """
+    log_path = vars_path.replace(".json", ".log")
+    cmd = [
+        "/home/dheeraj/.local/bin/ansible-playbook",
+        PLAYBOOK_PATH,
+        "-i", INVENTORY_PATH,
+        "--extra-vars", f"@{vars_path}"
+    ]
+
+    with open(log_path, "w") as log:
+        try:
+            p = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            for line in p.stdout:
+                log.write(line)
+                log.flush()
+            p.wait()
+        except Exception as e:
+            log.write(f"\nERROR executing playbook: {e}\n")
+            log.flush()
+
+# ================= BACKGROUND VM STATUS UPDATER =================
+def update_vm_status():
+    """
+    Background thread to periodically check VM SSH connectivity
+    and update the database.
+    """
+    while True:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT vmid, ipaddr, ssh_port FROM vm_status")
+            rows = c.fetchall()
+            for vmid, ipaddr, ssh_port in rows:
+                status = "ONLINE" if ssh_up(ipaddr, ssh_port) else "OFFLINE"
+                c.execute("UPDATE vm_status SET ssh_status=? WHERE vmid=?", (status, vmid))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[VM STATUS ERROR] {e}")
+        time.sleep(5)  # check every 5 seconds
+
+# ================= LOG TAIL =================
+@app.route("/log/<vars_file>")
+@login_required
+def view_log(vars_file):
+    lines = int(request.args.get("lines", 100))
+    log_path = os.path.join(LOGS_DIR, vars_file.replace(".json",".log"))
+
+    if not os.path.exists(log_path):
+        return jsonify({"log": "Log not available yet"})
+
+    with open(log_path) as f:
+        content = f.readlines()[-lines:]
+
+    return jsonify({"log": "".join(content)})
+
 # ================= ADD VM MANUALLY =================
 @app.route("/add_vm", methods=["POST"])
 @login_required
@@ -248,8 +372,7 @@ def add_vm():
     c = conn.cursor()
     c.execute("""
         INSERT OR REPLACE INTO vm_status
-        (vmid, vmname, ipaddr, target_node, ssh_port,
-         ssh_status, timestamp, created_by)
+        (vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by)
         VALUES (?,?,?,?,?,?,?,?)
     """, (
         payload["vmid"], payload["vmname"], payload["ipaddr"],
@@ -296,7 +419,15 @@ def download_inventory():
                      as_attachment=True,
                      download_name="vm_inventory.csv")
 
+# ================= START BACKGROUND THREADS =================
+# Start the VM status updater thread immediately when app is imported
+if os.environ.get("RUN_MAIN") != "true":
+    threading.Thread(
+        target=update_vm_status,
+        daemon=True
+    ).start()
 # ================= MAIN =================
-if __name__=="__main__":
+if __name__ == "__main__":
+    # Only used when running directly with python3 app.py
     app.run(host="0.0.0.0", port=8000, debug=True)
 
