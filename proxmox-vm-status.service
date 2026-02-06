@@ -1,0 +1,17 @@
+[Unit]
+Description=Proxmox VM Status Updater
+After=network.target
+
+[Service]
+User=dheeraj
+Group=dheeraj
+WorkingDirectory=/home/dheeraj/proxmox_vm_gui
+ExecStart=/home/dheeraj/proxmox_vm_gui/venv/bin/python3 vm_status_updater.py
+Restart=always
+RestartSec=5
+Environment="PATH=/home/dheeraj/proxmox_vm_gui/venv/bin:/home/dheeraj/.local/bin:/usr/bin:/bin"
+Environment="HOME=/home/dheeraj"
+
+[Install]
+WantedBy=multi-user.target
+

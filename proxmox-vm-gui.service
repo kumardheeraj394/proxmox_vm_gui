@@ -1,0 +1,20 @@
+[Unit]
+Description=Proxmox VM GUI (Gunicorn)
+After=network.target
+
+[Service]
+User=dheeraj
+Group=dheeraj
+WorkingDirectory=/home/dheeraj/proxmox_vm_gui
+Environment="PATH=/home/dheeraj/proxmox_vm_gui/venv/bin:/home/dheeraj/.local/bin:/usr/bin:/bin"
+ExecStart=/home/dheeraj/proxmox_vm_gui/venv/bin/gunicorn \
+          --workers 2 \
+          --threads 4 \
+          --timeout 0 \
+          --bind 0.0.0.0:8000 \
+          app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
