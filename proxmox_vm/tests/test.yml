@@ -44,7 +44,7 @@
           clones: "{{ clones }}"
 
     # -------------------------------------------------
-    # Create BASE VM (runs ONCE)
+    # Create VM 
     # -------------------------------------------------
     - name: Create base VM
       include_role:
@@ -62,21 +62,21 @@
         ipaddr: "{{ ipaddr }}"
         gateway: "{{ gateway }}"
         ssh_port: "{{ ssh_port }}"
-      when: base_vm_type == "new"
+#      when: base_vm_type == "new"
 
     # -------------------------------------------------
     # Create CLONES (loop happens HERE, not in the role)
     # -------------------------------------------------
-    - name: Create clone VM
-      include_role:
-        name: proxmox_vm
-      vars:
-        run_only_clone: true
-        target_node: "{{ clonetarget_node }}"
-        vmid: "{{ clonevmid }}"
-        vmname: "{{ clonevmname }}"
-        memory: "{{ clonememory | default(memory) }}"
-        cores: "{{ clonecores | default(cores) }}"
-        disksize: "{{ clonedisksize | default(disksize) }}"
-        ipaddr: "{{ cloneipaddr }}"
+#    - name: Create clone VM
+#      include_role:
+#        name: proxmox_vm
+#      vars:
+#        run_only_clone: true
+#        target_node: "{{ clonetarget_node }}"
+#        vmid: "{{ clonevmid }}"
+#        vmname: "{{ clonevmname }}"
+#        memory: "{{ clonememory | default(memory) }}"
+#        cores: "{{ clonecores | default(cores) }}"
+#        disksize: "{{ clonedisksize | default(disksize) }}"
+#        ipaddr: "{{ cloneipaddr }}"
 

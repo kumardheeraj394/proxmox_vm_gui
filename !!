@@ -1,10 +1,12 @@
 from flask import (
     Flask, render_template, request, jsonify,
-    redirect, url_for, session, flash
+    redirect, url_for, session, flash, send_file
 )
-import os, json, time, socket, threading, subprocess, sqlite3
+import os, json, time, socket, threading, subprocess, sqlite3, csv, io
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from db import get_db
+from vm_edit import vm_edit_bp   # moved here (no duplication)
 
 # ================= CONFIG =================
 app = Flask(__name__)
@@ -18,11 +20,13 @@ INVENTORY_PATH = "proxmox_vm/tests/inventory"
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 
+# ================= REGISTER BLUEPRINT =================
+app.register_blueprint(vm_edit_bp)
+
 # ================= DB INIT =================
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()
     c = conn.cursor()
-
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +36,6 @@ def init_db():
         role TEXT DEFAULT 'user'
     )
     """)
-
     c.execute("""
     CREATE TABLE IF NOT EXISTS vm_status (
         vmid TEXT PRIMARY KEY,
@@ -45,10 +48,8 @@ def init_db():
         created_by TEXT
     )
     """)
-
     conn.commit()
     conn.close()
-
 init_db()
 
 # ================= HELPERS =================
@@ -83,20 +84,16 @@ def login():
     if request.method == "POST":
         u = request.form["username"]
         p = request.form["password"]
-
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("SELECT password, role FROM users WHERE username=?", (u,))
         row = c.fetchone()
         conn.close()
-
         if row and check_password_hash(row[0], p):
             session["username"] = u
             session["role"] = row[1]
             return redirect(url_for("dashboard"))
-
         flash("Invalid credentials", "danger")
-
     return render_template("login.html")
 
 @app.route("/logout")
@@ -108,14 +105,21 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 10))
+    offset = (page-1)*per_page
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM vm_status")
+    total_vms = c.fetchone()[0]
 
-    c.execute("""
+    c.execute(f"""
         SELECT vmid, vmname, ipaddr, target_node,
                ssh_port, ssh_status, timestamp, created_by
         FROM vm_status
         ORDER BY timestamp DESC
+        LIMIT {per_page} OFFSET {offset}
     """)
     rows = c.fetchall()
 
@@ -139,12 +143,17 @@ def dashboard():
             "created_by": r[7]
         })
 
+    total_pages = (total_vms + per_page - 1) // per_page
+
     return render_template(
         "dashboard.html",
         vms=vms,
         users=users,
         role=session["role"],
-        username=session["username"]
+        username=session["username"],
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages
     )
 
 # ================= CREATE USER =================
@@ -154,24 +163,20 @@ def dashboard():
 def create_user():
     if request.method == "POST":
         username = request.form["username"]
-        email = request.form.get("email", "")
-        role = request.form.get("role", "user")
+        email = request.form.get("email","")
+        role = request.form.get("role","user")
         password = generate_password_hash(request.form["password"])
-
         try:
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
-            c.execute(
-                "INSERT INTO users (username,email,password,role) VALUES (?,?,?,?)",
-                (username, email, password, role)
-            )
+            c.execute("INSERT INTO users (username,email,password,role) VALUES (?,?,?,?)",
+                      (username,email,password,role))
             conn.commit()
             conn.close()
             flash("User created", "success")
             return redirect(url_for("dashboard"))
         except sqlite3.IntegrityError:
             flash("Username already exists", "danger")
-
     return render_template("create_user.html")
 
 # ================= MODIFY USER =================
@@ -181,24 +186,17 @@ def create_user():
 def modify_user(username):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-
     if request.method == "POST":
         email = request.form["email"]
         role = request.form["role"]
         password = request.form.get("password")
-
         if password:
             hashed = generate_password_hash(password)
-            c.execute(
-                "UPDATE users SET email=?, role=?, password=? WHERE username=?",
-                (email, role, hashed, username)
-            )
+            c.execute("UPDATE users SET email=?, role=?, password=? WHERE username=?",
+                      (email, role, hashed, username))
         else:
-            c.execute(
-                "UPDATE users SET email=?, role=? WHERE username=?",
-                (email, role, username)
-            )
-
+            c.execute("UPDATE users SET email=?, role=? WHERE username=?",
+                      (email, role, username))
         conn.commit()
         conn.close()
         flash("User updated", "success")
@@ -207,50 +205,42 @@ def modify_user(username):
     c.execute("SELECT username, email, role FROM users WHERE username=?", (username,))
     user = c.fetchone()
     conn.close()
-
     return render_template("modify_user.html", user=user)
 
-# ================= CHANGE OWN PASSWORD =================
+# ================= CHANGE PASSWORD =================
 @app.route("/change_password", methods=["GET","POST"])
 @login_required
 def change_password():
-    if request.method == "POST":
+    if request.method=="POST":
         old = request.form["old_password"]
         new = request.form["new_password"]
-
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("SELECT password FROM users WHERE username=?", (session["username"],))
         row = c.fetchone()
-
         if row and check_password_hash(row[0], old):
-            c.execute(
-                "UPDATE users SET password=? WHERE username=?",
-                (generate_password_hash(new), session["username"])
-            )
+            c.execute("UPDATE users SET password=? WHERE username=?",
+                      (generate_password_hash(new), session["username"]))
             conn.commit()
-            flash("Password updated", "success")
+            flash("Password updated","success")
         else:
-            flash("Old password incorrect", "danger")
-
+            flash("Old password incorrect","danger")
         conn.close()
-
     return render_template("change_password.html")
 
 # ================= VM FORM =================
 @app.route("/vm")
 @login_required
 def vm_form():
-    data = {"nodes": [], "storage": [], "images": []}
+    data = {"nodes":[], "storage":[], "images":[]}
     if os.path.exists(DISCOVER_JSON):
         with open(DISCOVER_JSON) as f:
             data = json.load(f)
-
     return render_template(
         "form.html",
-        nodes=data.get("nodes", []),
-        storage=data.get("storage", []),
-        images=data.get("images", []),
+        nodes=data.get("nodes",[]),
+        storage=data.get("storage",[]),
+        images=data.get("images",[]),
         ssh_port=10457
     )
 
@@ -266,18 +256,14 @@ def run():
     with open(vars_path, "w") as f:
         json.dump(payload, f, indent=2)
 
-    threading.Thread(
-        target=run_playbook,
-        args=(vars_path,),
-    ).start()
+    threading.Thread(target=run_playbook, args=(vars_path,), daemon=True).start()
 
-    # insert base VM to DB immediately
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
     c.execute("""
         INSERT OR REPLACE INTO vm_status
-        (vmid, vmname, ipaddr, target_node, ssh_port,
-         ssh_status, timestamp, created_by)
+        (vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by)
         VALUES (?,?,?,?,?,?,?,?)
     """, (
         payload["vmid"],
@@ -289,6 +275,23 @@ def run():
         ts,
         session["username"]
     ))
+
+    for clone in payload.get("clones", []):
+        c.execute("""
+            INSERT OR REPLACE INTO vm_status
+            (vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (
+            clone["clonevmid"],
+            clone["clonevmname"],
+            clone["cloneipaddr"],
+            clone["clonetarget_node"],
+            clone.get("ssh_port", payload["ssh_port"]),
+            "UNKNOWN",
+            ts,
+            session["username"]
+        ))
+
     conn.commit()
     conn.close()
 
@@ -302,19 +305,41 @@ def run_playbook(vars_path):
         "-i", INVENTORY_PATH,
         "--extra-vars", f"@{vars_path}"
     ]
-    with open(log_path, "w") as log:
-        p = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-        for line in p.stdout:
-            log.write(line)
-            log.flush()
-        p.wait()
 
-# ================= LOG TAIL =================
+    with open(log_path, "w") as log:
+        try:
+            p = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            for line in p.stdout:
+                log.write(line)
+                log.flush()
+            p.wait()
+        except Exception as e:
+            log.write(f"\nERROR executing playbook: {e}\n")
+            log.flush()
+
+# ================= VM STATUS THREAD =================
+def update_vm_status():
+    while True:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT vmid, ipaddr, ssh_port FROM vm_status")
+            rows = c.fetchall()
+            for vmid, ipaddr, ssh_port in rows:
+                status = "ONLINE" if ssh_up(ipaddr, ssh_port) else "OFFLINE"
+                c.execute("UPDATE vm_status SET ssh_status=? WHERE vmid=?", (status, vmid))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[VM STATUS ERROR] {e}")
+        time.sleep(5)
+
+# ================= LOG VIEW =================
 @app.route("/log/<vars_file>")
 @login_required
 def view_log(vars_file):
@@ -329,35 +354,27 @@ def view_log(vars_file):
 
     return jsonify({"log": "".join(content)})
 
-# ================= STATUS UPDATE =================
-@app.route("/status/<vars_file>")
+# ================= ADD VM =================
+@app.route("/add_vm", methods=["POST"])
 @login_required
-def status(vars_file):
+def add_vm():
+    payload = request.form
+    ts = int(time.time())
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT vmid, ipaddr, ssh_port FROM vm_status")
-    rows = c.fetchall()
-
-    now = int(time.time())
-    for vmid, ip, port in rows:
-        state = "ONLINE" if ssh_up(ip, port) else "OFFLINE"
-        c.execute(
-            "UPDATE vm_status SET ssh_status=?, timestamp=? WHERE vmid=?",
-            (state, now, vmid)
-        )
-
+    c.execute("""
+        INSERT OR REPLACE INTO vm_status
+        (vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by)
+        VALUES (?,?,?,?,?,?,?,?)
+    """, (
+        payload["vmid"], payload["vmname"], payload["ipaddr"],
+        payload["target_node"], payload["ssh_port"], "UNKNOWN",
+        ts, session["username"]
+    ))
     conn.commit()
     conn.close()
-
-    vms = []
-    for vmid, ip, port in rows:
-        vms.append({
-            "vmname": vmid,
-            "ipaddr": ip,
-            "status": "green" if ssh_up(ip, port) else "red"
-        })
-
-    return jsonify(vms)
+    flash("VM added manually","success")
+    return redirect(url_for("dashboard"))
 
 # ================= DELETE VM =================
 @app.route("/delete_vm/<vmid>")
@@ -371,6 +388,32 @@ def delete_vm(vmid):
     conn.close()
     flash("VM deleted", "success")
     return redirect(url_for("dashboard"))
+
+# ================= DOWNLOAD INVENTORY =================
+@app.route("/download_inventory")
+@login_required
+def download_inventory():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by FROM vm_status")
+    rows = c.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["VM ID","VM Name","IP","Target Node","SSH Port","SSH Status","Timestamp","Created By"])
+    for r in rows:
+        writer.writerow(r)
+    output.seek(0)
+
+    return send_file(io.BytesIO(output.getvalue().encode()),
+                     mimetype="text/csv",
+                     as_attachment=True,
+                     download_name="vm_inventory.csv")
+
+# ================= START BACKGROUND THREAD =================
+if os.environ.get("RUN_MAIN") != "true":
+    threading.Thread(target=update_vm_status, daemon=True).start()
 
 # ================= MAIN =================
 if __name__ == "__main__":

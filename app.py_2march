@@ -239,7 +239,6 @@ def vm_form():
         ssh_port=10457,
         next_vmid=data.get("next_vmid", 1000)
     )
-
 # ================= RUN PLAYBOOK =================
 @app.route("/run", methods=["POST"])
 @login_required
@@ -248,13 +247,6 @@ def run():
     ts = int(time.time())
     vars_file = f"proxmox_{ts}.json"
     vars_path = os.path.join(LOGS_DIR, vars_file)
-
-    # ===== Inject default SSH credentials for Ansible =====
-    payload["ciuser"] = "ubuntu"
-    payload["cipassword"] = "Admin@112233"
-    for clone in payload.get("clones", []):
-        clone["ciuser"] = payload["ciuser"]
-        clone["cipassword"] = payload["cipassword"]
 
     # Save payload for Ansible
     with open(vars_path, "w") as f:
@@ -306,6 +298,10 @@ def run():
     return jsonify({"status": "ok", "vars_file": vars_file})
 
 def run_playbook(vars_path):
+    """
+    Executes the Ansible playbook with the given vars file.
+    Logs all output to a .log file in LOGS_DIR.
+    """
     log_path = vars_path.replace(".json", ".log")
     cmd = [
         "/home/dheeraj/.local/bin/ansible-playbook",
@@ -313,10 +309,14 @@ def run_playbook(vars_path):
         "-i", INVENTORY_PATH,
         "--extra-vars", f"@{vars_path}"
     ]
+
     with open(log_path, "w") as log:
         try:
             p = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
             )
             for line in p.stdout:
                 log.write(line)
@@ -328,6 +328,10 @@ def run_playbook(vars_path):
 
 # ================= BACKGROUND VM STATUS UPDATER =================
 def update_vm_status():
+    """
+    Background thread to periodically check VM SSH connectivity
+    and update the database.
+    """
     while True:
         try:
             conn = sqlite3.connect(DB_PATH)
@@ -341,7 +345,7 @@ def update_vm_status():
             conn.close()
         except Exception as e:
             print(f"[VM STATUS ERROR] {e}")
-        time.sleep(5)
+        time.sleep(5)  # check every 5 seconds
 
 # ================= LOG TAIL =================
 @app.route("/log/<vars_file>")
@@ -349,10 +353,13 @@ def update_vm_status():
 def view_log(vars_file):
     lines = int(request.args.get("lines", 100))
     log_path = os.path.join(LOGS_DIR, vars_file.replace(".json",".log"))
+
     if not os.path.exists(log_path):
         return jsonify({"log": "Log not available yet"})
+
     with open(log_path) as f:
         content = f.readlines()[-lines:]
+
     return jsonify({"log": "".join(content)})
 
 # ================= ADD VM MANUALLY =================
@@ -399,12 +406,14 @@ def download_inventory():
     c.execute("SELECT vmid, vmname, ipaddr, target_node, ssh_port, ssh_status, timestamp, created_by FROM vm_status")
     rows = c.fetchall()
     conn.close()
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["VM ID","VM Name","IP","Target Node","SSH Port","SSH Status","Timestamp","Created By"])
     for r in rows:
         writer.writerow(r)
     output.seek(0)
+
     return send_file(io.BytesIO(output.getvalue().encode()),
                      mimetype="text/csv",
                      as_attachment=True,
@@ -415,9 +424,14 @@ from vm_edit import vm_edit_bp
 app.register_blueprint(vm_edit_bp)
 
 # ================= START BACKGROUND THREADS =================
+# Start the VM status updater thread immediately when app is imported
 if os.environ.get("RUN_MAIN") != "true":
-    threading.Thread(target=update_vm_status, daemon=True).start()
+    threading.Thread(
+        target=update_vm_status,
+        daemon=True
+    ).start()
 
 # ================= MAIN =================
 if __name__ == "__main__":
+    # Only used when running directly with python3 app.py
     app.run(host="0.0.0.0", port=8000, debug=True)

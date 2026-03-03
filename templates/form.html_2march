@@ -4,119 +4,35 @@
 <meta charset="UTF-8">
 <title>SVM | Create Virtual Machine</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
 <style>
-body {
-    background: #f4f6f9;
-    font-size: 14px;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-}
-
-/* ===== Header ===== */
-.page-header {
-    background: #1f2937;
-    color: white;
-    padding: 15px 25px;
-    margin-bottom: 25px;
-    border-radius: 6px;
-}
-
-/* ===== Main Container ===== */
-.main-container {
-    max-width: 1200px;
-    margin: auto;
-}
-
-/* ===== Cards ===== */
-.card {
-    border: none;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-}
-
-.card-header {
-    background: #ffffff;
-    border-bottom: 1px solid #e5e7eb;
-    font-weight: 600;
-    font-size: 1rem;
-}
-
-/* ===== Section Titles ===== */
-.section-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #374151;
-}
-
-/* ===== Form Inputs ===== */
-.form-label {
-    font-weight: 500;
-}
-.form-control, .form-select {
-    border-radius: 6px;
-    border: 1px solid #d1d5db;
-    height: 38px;
-    padding: 6px 10px;
-    font-size: 0.95rem;
-}
-.form-control:focus, .form-select:focus {
-    border-color: #2563eb;
-    box-shadow: none;
-}
-
-/* ===== Buttons ===== */
-.btn-primary {
-    background-color: #2563eb;
-    border: none;
-}
-.btn-primary:hover {
-    background-color: #1d4ed8;
-}
-
-/* ===== Clone Block ===== */
-.clone-block {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 12px;
-}
-
-/* ===== Console ===== */
-#console {
-    background: #111827;        /* dark terminal-like background */
-    color: #00ff88;             /* green text like terminal */
-    font-family: monospace;     /* monospace for alignment */
-    padding: 15px;
-    height: 350px;
-    overflow: auto;             /* scroll both vertically & horizontally */
-    border-radius: 8px;
-    font-size: 13px;
-    white-space: pre;           /* preserve exact line breaks and spacing */
-}
-
+body { background: #f4f6f9; font-size: 14px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+.page-header { background: #1f2937; color: white; padding: 15px 25px; margin-bottom: 25px; border-radius: 6px; }
+.main-container { max-width: 1200px; margin: auto; }
+.card { border: none; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+.card-header { background: #ffffff; border-bottom: 1px solid #e5e7eb; font-weight: 600; font-size: 1rem; }
+.form-label { font-weight: 500; }
+.form-control, .form-select { border-radius: 6px; border: 1px solid #d1d5db; height: 38px; padding: 6px 10px; font-size: 0.95rem; }
+.form-control:focus, .form-select:focus { border-color: #2563eb; box-shadow: none; }
+.btn-primary { background-color: #2563eb; border: none; }
+.btn-primary:hover { background-color: #1d4ed8; }
+.clone-block { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 12px; }
+#console { background: #111827; color: #00ff88; font-family: monospace; padding: 15px; height: 350px; overflow: auto; border-radius: 8px; font-size: 13px; white-space: pre; }
 </style>
 </head>
 
 <body>
-
-<!-- ===== HEADER ===== -->
 <div class="page-header d-flex justify-content-between align-items-center">
     <h5 class="mb-0">StackFlow Virtualization Manager</h5>
-    <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-light">
-        ← Dashboard
-    </a>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-light">← Dashboard</a>
 </div>
 
 <div class="main-container">
-
 <form id="vmForm">
 
 <!-- ===== BASE VM ===== -->
 <div class="card mb-4">
 <div class="card-header">Base Virtual Machine Configuration</div>
 <div class="card-body">
-
 <div class="row g-3">
 
 <div class="col-md-4">
@@ -156,7 +72,7 @@ body {
 
 <div class="col-md-2">
 <label class="form-label">VM ID</label>
-<input type="number" class="form-control" name="vmid" value="1000" required>
+<input type="number" class="form-control" name="vmid" value="{{ next_vmid }}" required>
 </div>
 
 <div class="col-md-3">
@@ -207,41 +123,30 @@ body {
 <div class="card mb-4">
 <div class="card-header">Clone Configuration</div>
 <div class="card-body">
-
 <div class="mb-3">
 <label class="form-label">Number of Clones</label>
 <input type="number" class="form-control w-25" id="clone_count" min="0" value="0">
 </div>
-
 <div id="clones_container"></div>
-
 </div>
 </div>
 
-<button type="submit" class="btn btn-primary px-4">
-Create VM(s)
-</button>
-
+<button type="submit" class="btn btn-primary px-4">Create VM(s)</button>
 </form>
 
 <!-- ===== LOG ===== -->
 <div class="card mt-5">
 <div class="card-header d-flex justify-content-between align-items-center">
 <span>Playbook Execution Log</span>
-<button class="btn btn-outline-secondary btn-sm" id="viewLogBtn" disabled>
-View Log
-</button>
+<button class="btn btn-outline-secondary btn-sm" id="viewLogBtn" disabled>View Log</button>
 </div>
-
 <div class="card-body">
 <div id="console">Waiting for execution...</div>
 </div>
 </div>
-
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
 const cloneCountInput = document.getElementById("clone_count");
 const clonesContainer = document.getElementById("clones_container");
@@ -251,35 +156,63 @@ const viewLogBtn = document.getElementById("viewLogBtn");
 
 let currentVarsFile = null;
 
-/* ===== Clone Blocks ===== */
-cloneCountInput.addEventListener("input", () => {
+function createCloneBlocks() {
     clonesContainer.innerHTML = "";
     const count = parseInt(cloneCountInput.value || 0);
+    const baseType = document.querySelector('select[name="base_vm_type"]').value;
+    let baseVMID = parseInt(document.querySelector('input[name="vmid"]').value || 1000);
+    let firstCloneManualID = null;
 
     for (let i = 1; i <= count; i++) {
         const div = document.createElement("div");
         div.className = "clone-block";
 
+        // Default clone ID logic
+        let cloneID;
+        if (baseType === "new") {
+            cloneID = baseVMID + i;
+        } else { // template
+            cloneID = (i === 1) ? baseVMID + 1 : (firstCloneManualID ? firstCloneManualID + (i - 1) : "");
+        }
+
         div.innerHTML = `
         <h6 class="mb-3">Clone ${i}</h6>
         <div class="row g-2">
-            <div class="col-md-2"><input class="form-control" name="clone_${i}_vmid" placeholder="VM ID" required></div>
+            <div class="col-md-2">
+                <input class="form-control" name="clone_${i}_vmid" value="${cloneID}" placeholder="VM ID" required>
+            </div>
             <div class="col-md-2"><input class="form-control" name="clone_${i}_vmname" placeholder="Name" required></div>
             <div class="col-md-2"><input class="form-control" name="clone_${i}_ipaddr" placeholder="IP/CIDR" required></div>
             <div class="col-md-2"><input class="form-control" name="clone_${i}_memory" value="4096" required></div>
             <div class="col-md-1"><input class="form-control" name="clone_${i}_cores" value="2" required></div>
             <div class="col-md-1"><input class="form-control" name="clone_${i}_disksize" value="0" required></div>
             <div class="col-md-2">
-            <select class="form-select" name="clone_${i}_target_node" required>
-            {% for n in nodes %}
-            <option value="{{ n }}">{{ n }}</option>
-            {% endfor %}
-            </select>
+                <select class="form-select" name="clone_${i}_target_node" required>
+                {% for n in nodes %}
+                <option value="{{ n }}">{{ n }}</option>
+                {% endfor %}
+                </select>
             </div>
         </div>`;
         clonesContainer.appendChild(div);
+
+        // Listen to first clone manual ID for template
+        if (baseType === "template" && i === 1) {
+            const firstCloneInput = div.querySelector(`input[name="clone_1_vmid"]`);
+            firstCloneInput.addEventListener("input", () => {
+                firstCloneManualID = parseInt(firstCloneInput.value || baseVMID + 1);
+                for (let j = 2; j <= count; j++) {
+                    const nextInput = document.querySelector(`input[name="clone_${j}_vmid"]`);
+                    nextInput.value = firstCloneManualID + (j - 1);
+                }
+            });
+        }
     }
-});
+}
+
+cloneCountInput.addEventListener("input", createCloneBlocks);
+document.querySelector('select[name="base_vm_type"]').addEventListener("change", createCloneBlocks);
+document.querySelector('input[name="vmid"]').addEventListener("input", createCloneBlocks);
 
 /* ===== Submit ===== */
 form.addEventListener("submit", async e => {
@@ -289,8 +222,8 @@ form.addEventListener("submit", async e => {
 
     const data = Object.fromEntries(new FormData(form).entries());
     data.clones = [];
-
     const count = parseInt(cloneCountInput.value || 0);
+
     for (let i = 1; i <= count; i++) {
         data.clones.push({
             clonevmid: data[`clone_${i}_vmid`],
@@ -323,7 +256,5 @@ viewLogBtn.addEventListener("click", async () => {
     consoleBox.scrollTop = consoleBox.scrollHeight;
 });
 </script>
-
 </body>
 </html>
-

@@ -15,10 +15,23 @@
       register: storage
       changed_when: false
 
-    - name: Get image list
-      shell: ls /var/lib/vz/template/iso/
-      register: images
-      changed_when: false
+    - name: Get image list 
+      shell: basename -a /mnt/pve/ISO/template/iso/*.img 
+      register: images 
+      changed_when: false        
+
+    - name: Reorder nodes to put pve57 first
+      set_fact:
+        nodes_ordered: "{{ ['pve57'] + (nodes.stdout_lines | reject('equalto','pve57') | list) }}"
+
+    - name: Reorder storage to put Unity-Storage first
+      set_fact:
+        storage_ordered: "{{ ['Unity-Storage'] + (storage.stdout_lines[1:] | map('split') | map('first') | reject('equalto','Unity-Storage') | list) }}"
+
+    - name: Get next free VMID
+      shell: pvesh get /cluster/nextid
+      register: next_vmid
+      changed_when: false         
 
     - name: Write discovery JSON on Flask host
       delegate_to: localhost
@@ -26,8 +39,9 @@
         dest: /tmp/proxmox_discover.json
         content: |
           {
-            "nodes": {{ nodes.stdout_lines | to_json }},
-            "storage": {{ storage.stdout_lines[1:] | map('split') | map('first') | list | to_json }},
-            "images": {{ images.stdout_lines | to_json }}
+            "nodes": {{ nodes_ordered | to_json }},
+            "storage": {{ storage_ordered | to_json }},
+            "images": {{ images.stdout_lines | to_json }},
+            "next_vmid": {{ next_vmid.stdout }}  
           }
 

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Edit VM</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+body {
+    background: #f4f6f9;
+}
+
+.page-header {
+    background: #1f2937;
+    color: white;
+    padding: 12px 20px;
+    margin-bottom: 25px;
+}
+
+.console {
+    background: #000;
+    color: #00ff88;
+    padding: 15px;
+    height: 400px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 13px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+}
+
+.var-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- HEADER -->
+<div class="page-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">Edit VM {{ vm.vmid }}</h5>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-light">
+        ← Dashboard
+    </a>
+</div>
+
+<div class="container">
+
+<form method="POST">
+
+<div class="card p-3 mb-4 shadow-sm">
+
+<div class="row mb-3">
+<div class="col-md-3">
+<label class="form-label">VM Name</label>
+<input type="text" name="vmname" class="form-control" value="{{ vm.vmname }}" required>
+</div>
+
+<div class="col-md-3">
+<label class="form-label">IP Address</label>
+<input type="text" name="ipaddr" class="form-control" value="{{ vm.ipaddr }}" required>
+</div>
+
+<div class="col-md-3">
+<label class="form-label">SSH Port</label>
+<input type="number" name="ssh_port" class="form-control" value="{{ vm.ssh_port }}" required>
+</div>
+
+<div class="col-md-3">
+<label class="form-label">Target Node</label>
+<input type="text" name="target_node" class="form-control" value="{{ vm.target_node }}" required>
+</div>
+</div>
+
+<div class="row mb-3">
+<div class="col-md-3">
+<label class="form-label">Cluster Name</label>
+<input type="text" name="cluster_name" class="form-control" value="{{ vm.cluster_name }}">
+</div>
+
+<div class="col-md-3">
+<label class="form-label">Master IP</label>
+<input type="text" name="master_ip" class="form-control" value="{{ vm.master_ip }}">
+</div>
+</div>
+
+<hr>
+
+<h6 class="fw-bold">Extra Variables</h6>
+
+<div id="variables-container">
+{% for key, value in vm.extra_vars.items() %}
+<div class="var-row">
+<input type="text" name="var_name[]" class="form-control" value="{{ key }}" placeholder="Variable Name">
+<input type="text" name="var_value[]" class="form-control" value="{{ value }}" placeholder="Value">
+<button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">X</button>
+</div>
+{% endfor %}
+</div>
+
+<button type="button" class="btn btn-outline-secondary btn-sm mb-3" onclick="addVariable()">
++ Add Variable
+</button>
+
+<hr>
+
+<div class="mb-3">
+<label class="form-label">Select Ansible Roles</label>
+<select name="ansible_roles" class="form-select" multiple size="5">
+{% for role in roles %}
+<option value="{{ role }}">{{ role }}</option>
+{% endfor %}
+</select>
+<small class="text-muted">Hold CTRL/CMD to select multiple roles</small>
+</div>
+
+</div>
+
+<button type="submit" class="btn btn-primary px-4">Update & Run</button>
+
+</form>
+
+<hr class="mt-5">
+
+<h5>Ansible Console</h5>
+<button onclick="refreshLog()" class="btn btn-dark btn-sm mb-2">
+Refresh Log
+</button>
+
+<pre id="console" class="console">Waiting for logs...</pre>
+
+</div>
+
+<script>
+function addVariable() {
+    let container = document.getElementById("variables-container");
+
+    let div = document.createElement("div");
+    div.className = "var-row";
+
+    div.innerHTML = `
+        <input type="text" name="var_name[]" class="form-control" placeholder="Variable Name">
+        <input type="text" name="var_value[]" class="form-control" placeholder="Value">
+        <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">X</button>
+    `;
+
+    container.appendChild(div);
+}
+
+function removeRow(btn) {
+    btn.parentElement.remove();
+}
+
+function refreshLog() {
+fetch("/ansible_log/{{ vm.vmid }}")
+.then(response => response.text())
+.then(data => {
+let consoleDiv = document.getElementById("console");
+consoleDiv.textContent = data.trim() === "" ? "No logs yet..." : data;
+consoleDiv.scrollTop = consoleDiv.scrollHeight;
+});
+}
+
+setInterval(refreshLog, 3000);
+refreshLog();
+</script>
+
+</body>
+</html>

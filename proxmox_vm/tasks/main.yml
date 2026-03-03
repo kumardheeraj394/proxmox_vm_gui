@@ -6,9 +6,9 @@
 # 1. Create base VM (if new)
 # -------------------------
 - name: Create single VM
-  import_tasks: create_single_vm.yml
+  include_tasks: create_single_vm.yml
   when: base_vm_type == "new"
-
+#  run_once: true
 # -------------------------
 # 2. Clone additional VMs (only if not testing run_only_clone)
 # -------------------------
