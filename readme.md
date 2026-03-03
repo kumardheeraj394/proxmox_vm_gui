@@ -89,7 +89,7 @@ Visit:
 http://<server-ip>:8000/login
 ```
 
-🖥 VM Lifecycle Management
+###🖥 VM Lifecycle Management
 
 Create VM (New or Template)
 
@@ -105,7 +105,7 @@ Delete VM (Admin only)
 
 CSV Inventory Export
 
-⚙ Automation (Ansible Integration)
+###⚙ Automation (Ansible Integration)
 
 Background playbook execution
 
@@ -117,7 +117,7 @@ Per-VM log storage
 
 Live log console (auto-refresh)
 
-📡 Monitoring
+###📡 Monitoring
 
 Background SSH status checker
 
