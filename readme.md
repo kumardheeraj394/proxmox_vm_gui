@@ -50,7 +50,7 @@ Your Flask application:
 - Executes Ansible playbooks in the background
 - Stores VM metadata in SQLite database
 
----
+```
 User (Browser)
 ↓
 Flask Web UI
@@ -62,12 +62,11 @@ Runs Ansible Playbook
 Proxmox VE API
 ↓
 VM Provisioned / Cloned
----
+```
 
-
----
 
 ## 🧩 Installation
+---
 
 ### Requirements
 
@@ -76,9 +75,9 @@ VM Provisioned / Cloned
 - Ansible
 - Proxmox VE host/API access
 - `gunicorn` for production deployment
----
-### Python Dependencies
 
+### Python Dependencies
+---
 
 ```bash
 pip install flask gunicorn
@@ -106,6 +105,7 @@ Manual VM record addition
 Delete VM (Admin only)
 
 CSV Inventory Export
+
 ###⚙ Automation (Ansible Integration)
 ---
 Background playbook execution
