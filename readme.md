@@ -1,6 +1,6 @@
 📁 Project Structure
 ---
-.
+```
 ├── app.py                  # Main Flask application
 ├── vm_edit.py              # VM edit + role execution blueprint
 ├── db.py                   # Database helper
@@ -16,9 +16,10 @@
 ├── /tmp/proxmox_logs/      # Playbook logs
 ├── /tmp/ansible_logs/      # Role execution logs
 └── /tmp/ansible_inventory/ # Generated inventories
----
-# 🚀 Proxmox VM GUI (SVM)
+```
 
+# 🚀 Proxmox VM GUI (SVM)
+---
 Proxmox VM GUI (StackFlow Virtualization Manager) is a lightweight web interface to manage virtual machines on a Proxmox VE infrastructure using Flask and Ansible.
 
 This project provides an easy way to:
@@ -89,9 +90,9 @@ Visit:
 ```
 http://<server-ip>:8000/login
 ```
----
-###🖥 VM Lifecycle Management
 
+###🖥 VM Lifecycle Management
+---
 Create VM (New or Template)
 
 Automatic Clone Generation
@@ -105,9 +106,8 @@ Manual VM record addition
 Delete VM (Admin only)
 
 CSV Inventory Export
----
 ###⚙ Automation (Ansible Integration)
-
+---
 Background playbook execution
 
 Dynamic inventory generation
@@ -117,9 +117,9 @@ Multi-role execution per VM
 Per-VM log storage
 
 Live log console (auto-refresh)
----
-###📡 Monitoring
 
+###📡 Monitoring
+---
 Background SSH status checker
 
 Status updates every 5 seconds
@@ -130,4 +130,4 @@ Status indicators:
 
 🔴 OFFLINE
 
-⚪ UNKNOWN
+⚪UNKNOWN
