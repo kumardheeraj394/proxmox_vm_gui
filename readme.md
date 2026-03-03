@@ -75,8 +75,9 @@ VM Provisioned / Cloned
 - Ansible
 - Proxmox VE host/API access
 - `gunicorn` for production deployment
-
+---
 ### Python Dependencies
+
 
 ```bash
 pip install flask gunicorn
@@ -88,7 +89,7 @@ Visit:
 ```
 http://<server-ip>:8000/login
 ```
-
+---
 ###🖥 VM Lifecycle Management
 
 Create VM (New or Template)
@@ -104,7 +105,7 @@ Manual VM record addition
 Delete VM (Admin only)
 
 CSV Inventory Export
-
+---
 ###⚙ Automation (Ansible Integration)
 
 Background playbook execution
@@ -116,7 +117,7 @@ Multi-role execution per VM
 Per-VM log storage
 
 Live log console (auto-refresh)
-
+---
 ###📡 Monitoring
 
 Background SSH status checker
