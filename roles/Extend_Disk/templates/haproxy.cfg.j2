@@ -1,0 +1,36 @@
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    daemon
+    maxconn 2048
+
+defaults
+    log     global
+    mode    tcp
+    timeout connect 10s
+    timeout client  30s
+    timeout server  30s
+
+frontend k8s_api_frontend
+    bind *:5443
+    default_backend k8s_api_backend
+
+backend k8s_api_backend
+    balance roundrobin
+    option tcp-check
+    server master1 {{ ansible_host }}:6443 check
+    server master2 {{ ansible_host.split('.')[:3] | join('.') }}.{{ (ansible_host.split('.')[-1] | int) + 1 }}:6443 check
+    server master3 {{ ansible_host.split('.')[:3] | join('.') }}.{{ (ansible_host.split('.')[-1] | int) + 2 }}:6443 check
+
+#-- Registration (port 9345) --
+frontend rke2-registration
+    bind *:8345
+    default_backend rke2-etcd
+
+backend rke2-etcd
+    mode tcp
+    balance roundrobin
+    option tcp-check
+    server etcd1 {{ ansible_host }}:9345 check
+    server etcd2 {{ ansible_host.split('.')[:3] | join('.') }}.{{ (ansible_host.split('.')[-1] | int) + 1 }}:9345 check
+    server etcd3 {{ ansible_host.split('.')[:3] | join('.') }}.{{ (ansible_host.split('.')[-1] | int) + 2 }}:9345 check  

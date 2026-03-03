@@ -1,0 +1,179 @@
+---
+#- name: Resize main disk on remote Proxmox host
+#  ansible.builtin.command: qm resize {{ vmid }} scsi0 +{{ disksize }}G
+#  delegate_to: 10.0.24.57
+#  remote_user: root
+#  become: false
+
+# 1️⃣ Gather system facts
+- name: Gather system facts
+  ansible.builtin.setup:
+    gather_subset:
+      - hardware
+      - mounts
+
+# 2️⃣ Initialize variables
+- name: Initialize variables
+  set_fact:
+    target_mount: "{{ root_mount_point | default('/') }}"
+    root_device: ""
+    root_fs_type: ""
+    is_lvm: false
+    vg_name: ""
+    pv_device: ""
+    root_disk: ""
+    part_number: ""
+
+# 3️⃣ Detect root mount
+- name: Detect root mount
+  set_fact:
+    root_device: "{{ item.device }}"
+    root_fs_type: "{{ item.fstype }}"
+  loop: "{{ ansible_mounts }}"
+  when: item.mount == target_mount
+  run_once: true
+
+- name: Debug root info
+  debug:
+    msg:
+      - "Mount: {{ target_mount }}"
+      - "Device: {{ root_device }}"
+      - "FS Type: {{ root_fs_type }}"
+
+# 4️⃣ Check if root is LVM
+- name: Check if root is LVM
+  command: lsblk -no TYPE {{ root_device }}
+  register: lvm_check
+  changed_when: false
+
+- name: Set LVM flag
+  set_fact:
+    is_lvm: "{{ 'lvm' in lvm_check.stdout }}"
+
+# =========================================================
+# NON-LVM SECTION
+# =========================================================
+
+- name: Get parent disk (non-LVM)
+  command: lsblk -dn -o PKNAME {{ root_device }}
+  register: parent_disk
+  when: not is_lvm
+  changed_when: false
+
+- name: Set root disk path (non-LVM)
+  set_fact:
+    root_disk: "/dev/{{ parent_disk.stdout | trim }}"
+  when: not is_lvm
+
+- name: Extract partition number (non-LVM)
+  set_fact:
+    part_number: "{{ root_device | regex_replace('^.*?([0-9]+)$','\\1') }}"
+  when: not is_lvm
+
+- name: Install growpart (non-LVM)
+  apt:
+    name: cloud-guest-utils
+    state: present
+    update_cache: yes
+  when: not is_lvm
+
+- name: Grow partition (non-LVM)
+  command: growpart {{ root_disk }} {{ part_number }}
+  register: growpart_result
+  failed_when: >
+    growpart_result.rc != 0 and
+    "NOCHANGE" not in growpart_result.stdout
+  when: not is_lvm
+
+- name: Resize ext4 (non-LVM)
+  command: resize2fs {{ root_device }}
+  when: not is_lvm and root_fs_type == "ext4"
+
+- name: Resize XFS (non-LVM)
+  command: xfs_growfs {{ target_mount }}
+  when: not is_lvm and root_fs_type == "xfs"
+
+# =========================================================
+# LVM SECTION
+# =========================================================
+
+- name: Get VG name
+  command: lvs --noheadings -o vg_name {{ root_device }}
+  register: vg_result
+  when: is_lvm
+  changed_when: false
+
+- name: Set VG name
+  set_fact:
+    vg_name: "{{ vg_result.stdout | trim }}"
+  when: is_lvm
+
+- name: Get PV device
+  command: pvs --noheadings -o pv_name --select vg_name={{ vg_name }}
+  register: pv_result
+  when: is_lvm
+  changed_when: false
+
+- name: Set PV device
+  set_fact:
+    pv_device: "{{ pv_result.stdout_lines[0] | trim }}"
+  when: is_lvm
+
+- name: Get parent disk of PV
+  command: lsblk -dn -o PKNAME {{ pv_device }}
+  register: pv_parent
+  when: is_lvm
+  changed_when: false
+
+- name: Set root disk path (LVM)
+  set_fact:
+    root_disk: "/dev/{{ pv_parent.stdout | trim }}"
+  when: is_lvm
+
+- name: Extract partition number (LVM)
+  set_fact:
+    part_number: "{{ pv_device | regex_replace('^.*?([0-9]+)$','\\1') }}"
+  when: is_lvm
+
+- name: Install growpart (LVM)
+  apt:
+    name: cloud-guest-utils
+    state: present
+    update_cache: yes
+  when: is_lvm
+
+- name: Grow PV partition
+  command: growpart {{ root_disk }} {{ part_number }}
+  register: growpart_lvm
+  failed_when: >
+    growpart_lvm.rc != 0 and
+    "NOCHANGE" not in growpart_lvm.stdout
+  when: is_lvm
+
+- name: Resize PV
+  command: pvresize {{ pv_device }}
+  when: is_lvm
+
+- name: Extend LV
+  command: lvextend -l +100%FREE {{ root_device }}
+  when: is_lvm
+
+- name: Resize ext4 (LVM)
+  command: resize2fs {{ root_device }}
+  when: is_lvm and root_fs_type == "ext4"
+
+- name: Resize XFS (LVM)
+  command: xfs_growfs {{ target_mount }}
+  when: is_lvm and root_fs_type == "xfs"
+
+# =========================================================
+# VERIFY
+# =========================================================
+
+- name: Verify filesystem
+  command: df -h {{ target_mount }}
+  register: df_output
+  changed_when: false
+
+- debug:
+    msg: "{{ df_output.stdout }}"

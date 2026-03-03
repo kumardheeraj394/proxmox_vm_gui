@@ -1,0 +1,21 @@
+# roles/proxmox_vm/defaults/main.yml
+
+bridge: vmbr0
+vg: pve
+
+# Default VM settings
+default_vmid: 100
+default_vmname: ubuntu-ci
+default_memory: 4096
+default_cores: 2
+default_ipaddr: 10.10.10.195/24
+default_gateway: 10.10.10.1
+default_ciuser: ubuntu
+default_cipassword: changeme
+default_disksize: 20
+
+# Optional: default storage, vlan, image
+default_storage_index: 2
+default_vlan_index: 0
+default_image_index: 3
+

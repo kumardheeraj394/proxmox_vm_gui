@@ -1,0 +1,118 @@
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+
+- name: Configure Haproxy.cfg
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: '0644'
+  become: yes
+
+- name: Ensure HAProxy is enabled and running
+  ansible.builtin.systemd:
+    name: haproxy
+    enabled: yes
+    state: started
+
+- name: Install Helm on first master node only
+  ansible.builtin.command: snap install helm --classic
+  when: master_ip == ansible_host
+
+- name: Ensure MetalLB namespace exists
+  ansible.builtin.command: kubectl create namespace metallb-system
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  ignore_errors: true   # ignore "already exists" error
+  become: yes
+  when: master_ip == ansible_host
+
+- name: Wait for MetalLB namespace to be available
+  ansible.builtin.command: kubectl get namespace metallb-system
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: metallb_ns
+  retries: 10
+  delay: 3
+  until: metallb_ns.rc == 0
+  become: yes
+  when: master_ip == ansible_host  
+
+- name: Apply MetalLB manifests
+  ansible.builtin.command: >
+    kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  become: yes
+  when: master_ip == ansible_host  
+
+- name: Wait for MetalLB controller to be ready
+  ansible.builtin.command: >
+    kubectl wait --namespace metallb-system
+    --for=condition=available
+    deployment/controller
+    --timeout=180s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: wait_controller
+  retries: 10
+  delay: 10
+  until: wait_controller.rc == 0
+  become: yes
+  when: master_ip == ansible_host
+
+- name: Create MetalLB config file
+  ansible.builtin.copy:
+    dest: /tmp/metallb-config.yaml
+    content: |
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: lb-pool
+        namespace: metallb-system
+      spec:
+        addresses:
+          - {{ metallb_ip_range }}
+      ---
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: l2-advertisement
+        namespace: metallb-system
+  when: master_ip == ansible_host
+
+- name: Apply MetalLB config
+  ansible.builtin.command: kubectl apply -f /tmp/metallb-config.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  become: yes
+  when: master_ip == ansible_host  
+
+- name: Add HAProxy Helm repo
+  ansible.builtin.command:
+    cmd: helm repo add haproxytech https://haproxytech.github.io/helm-charts
+  register: helm_repo_add
+  changed_when: "'already exists' not in helm_repo_add.stderr"
+  when: master_ip == ansible_host  
+
+- name: Update Helm repos
+  ansible.builtin.command:
+    cmd: helm repo update
+  when: master_ip == ansible_host    
+
+- name: Install HAProxy Ingress controller
+  command: >
+    helm upgrade --install haproxy-ingress haproxytech/kubernetes-ingress
+    --namespace haproxy-controller
+    --create-namespace
+    --set controller.service.type=LoadBalancer
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    HOME: /root
+  become: yes
+  when: master_ip == ansible_host  

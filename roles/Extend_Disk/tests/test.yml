@@ -1,0 +1,7 @@
+---
+- hosts: Extend_Disk
+  remote_user: ubuntu
+  become: yes
+  gather_facts: yes      # <--- ensure Ansible collects facts
+  roles:
+    - Extend_Disk

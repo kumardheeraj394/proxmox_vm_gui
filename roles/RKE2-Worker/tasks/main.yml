@@ -1,0 +1,140 @@
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - vim
+      - wget
+      - docker.io
+      - nfs-common
+    state: present
+    update_cache: yes
+
+- name: Download RKE2 install script
+  get_url:
+    url: "{{ rke2_install_url }}"
+    dest: /tmp/install.sh
+    mode: '0755'
+
+- name: Make RKE2 script executable
+  file:
+    path: /tmp/install.sh
+    mode: '0755'
+
+- name: Install RKE2 agent (specific version v1.32.10+rke2r1)
+  command: /tmp/install.sh
+  args:
+    creates: /usr/local/bin/rke2
+  environment:
+    INSTALL_RKE2_TYPE: agent
+    INSTALL_RKE2_CHANNEL: "{{ rke2_version }}"
+  become: yes    
+
+- name: Create RKE2 config directory
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: '0755'
+
+#- name: Calculate master IP dynamically
+#  set_fact:
+#    calculated_master_ip: "{{ ansible_host.split('.')[:3] | join('.') }}.{{ (ansible_host.split('.')[-1] | int) - 3 }}"
+#  run_once: true      
+
+- name: Deploy RKE2 server config
+  template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: '0644'
+  become: yes     
+
+- name: Read token from calculated master
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/rke2/server/node-token
+  delegate_to: "{{ master_ip }}"
+  vars:
+    ansible_user: "{{ hostvars[inventory_hostname].ansible_user }}"
+    ansible_port: "{{ hostvars[inventory_hostname].ansible_port }}"
+    ansible_ssh_private_key_file: "{{ hostvars[inventory_hostname].ansible_ssh_private_key_file }}"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  run_once: true
+  register: local_token
+
+- name: Replace token in remote config
+  ansible.builtin.lineinfile:
+    path: /etc/rancher/rke2/config.yaml
+    regexp: '^token:'
+    line: "token: {{ local_token.content | b64decode }}"
+  become: yes
+
+- name: Enable and start RKE2 agent
+  systemd:
+    name: rke2-agent
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes    
+
+# ----------------------
+# New task: Label the node as worker
+- name: Label worker node from master
+  command: kubectl label node {{ ansible_hostname | lower }} node-role.kubernetes.io/worker=worker --overwrite
+  delegate_to: "{{ master_ip }}"   # replace with master node IP
+  vars:
+    ansible_user: "{{ hostvars[inventory_hostname].ansible_user }}"
+    ansible_port: "{{ hostvars[inventory_hostname].ansible_port }}"
+    ansible_ssh_private_key_file: "{{ hostvars[inventory_hostname].ansible_ssh_private_key_file }}"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"  
+  become: yes
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+# ------------------------------------------------
+# 1️⃣ Get node names + IPs from master
+# ------------------------------------------------
+- name: Get node names and IPs from master
+  command: >
+    kubectl get nodes
+    -o jsonpath='{range .items[*]}{.metadata.name} {.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
+  delegate_to: "{{ master_ip }}"
+  vars:
+    ansible_user: "{{ hostvars[inventory_hostname].ansible_user }}"
+    ansible_port: "{{ hostvars[inventory_hostname].ansible_port }}"
+    ansible_ssh_private_key_file: "{{ hostvars[inventory_hostname].ansible_ssh_private_key_file }}"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  run_once: true    
+  register: node_list_raw
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+
+# ------------------------------------------------
+# 2️⃣ Convert output into structured list
+# ------------------------------------------------
+- name: Convert node list to structured data
+  set_fact:
+    cluster_nodes: >-
+      {{
+        node_list_raw.stdout_lines
+        | map('split', ' ')
+        | list
+      }}
+
+- name: Add all cluster entries to all cluster nodes
+  blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE CLUSTER NODES"
+    block: |
+      {% for node in cluster_nodes %}
+      {{ node[1] | trim('\"') }} {{ node[0] | lower }}
+      {% endfor %}
+  loop: "{{ cluster_nodes | map('last') | list }}"
+  loop_control:
+    label: "{{ item }}"
+  delegate_to: "{{ item }}"
+  become: yes
+  vars:
+    ansible_user: "{{ hostvars[inventory_hostname].ansible_user }}"
+    ansible_port: "{{ hostvars[inventory_hostname].ansible_port }}"
+    ansible_ssh_private_key_file: "{{ hostvars[inventory_hostname].ansible_ssh_private_key_file }}"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"      

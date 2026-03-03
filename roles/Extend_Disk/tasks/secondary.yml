@@ -1,0 +1,143 @@
+---
+# =========================================================
+# Secondary Disk Logic (/data)
+# =========================================================
+- name: Generate VG name dynamically
+  set_fact:
+    vg_name: "{{ mount_directory | regex_replace('^/', '') | regex_replace('/', '_') }}"
+
+- name: Ensure mount_directory default
+  set_fact:
+    mount_directory: "{{ mount_directory | default('/data') }}"
+
+# ---------------------------------------------------------
+# 1️⃣ Check if mount exists
+# ---------------------------------------------------------
+
+- name: Check if {{ mount_directory }} is mounted
+  command: findmnt -n -o SOURCE {{ mount_directory }}
+  register: mount_check
+  failed_when: false
+  changed_when: false
+
+- name: Set mount_exists
+  set_fact:
+    mount_exists: "{{ mount_check.stdout != '' }}"
+
+# ---------------------------------------------------------
+# 2️⃣ IF MOUNT EXISTS → EXTEND SAME DISK
+# ---------------------------------------------------------
+
+- name: Get LV path if mounted
+  set_fact:
+    existing_lv: "{{ mount_check.stdout }}"
+  when: mount_exists
+
+- name: Get VG name
+  command: lvs --noheadings -o vg_name {{ existing_lv }}
+  register: vg_result
+  changed_when: false
+  when: mount_exists
+
+- name: Set VG fact
+  set_fact:
+    vg_name: "{{ vg_result.stdout | trim }}"
+  when: mount_exists
+
+- name: Get PV device
+  command: pvs --noheadings -o pv_name --select vg_name={{ vg_name }}
+  register: pv_result
+  changed_when: false
+  when: mount_exists
+
+- name: Set PV device
+  set_fact:
+    pv_device: "{{ pv_result.stdout | trim }}"
+  when: mount_exists
+
+- name: Extend existing PV (if disk was resized)
+  command: pvresize {{ pv_device }}
+  when: mount_exists
+
+- name: Extend existing LV
+  command: lvextend -l +100%FREE {{ existing_lv }}
+  when: mount_exists
+
+- name: Resize filesystem
+  command: resize2fs {{ existing_lv }}
+  when: mount_exists
+
+# ---------------------------------------------------------
+# 3️⃣ IF MOUNT DOES NOT EXIST → CREATE NEW LVM
+# ---------------------------------------------------------
+
+- name: Detect unused disk (no partitions, not sda)
+  shell: |
+    for disk in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
+      if [ "$disk" = "sda" ]; then
+        continue
+      fi
+      if ! lsblk -n /dev/$disk | grep -q part; then
+        echo $disk
+      fi
+    done
+  register: free_disks
+  changed_when: false
+  when: not mount_exists
+
+- name: Fail if no free disk
+  fail:
+    msg: "No free disk available for {{ mount_directory }}"
+  when:
+    - not mount_exists
+    - free_disks.stdout_lines | length == 0
+
+- name: Select new disk
+  set_fact:
+    new_disk: "/dev/{{ free_disks.stdout_lines[0] }}"
+  when: not mount_exists
+
+- name: Create PV
+  command: pvcreate {{ new_disk }}
+  when: not mount_exists
+
+- name: Create VG
+  command: vgcreate vg_{{ vg_name }} {{ new_disk }}
+  when: not mount_exists
+
+- name: Create LV
+  command: lvcreate -l 100%FREE -n lv_{{ vg_name }} vg_{{ vg_name }}
+  when: not mount_exists
+
+- name: Format filesystem
+  filesystem:
+    fstype: ext4
+    dev: /dev/vg_{{ vg_name }}/lv_{{ vg_name }}
+  when: not mount_exists
+
+- name: Create mount directory
+  file:
+    path: "{{ mount_directory }}"
+    state: directory
+    mode: '0755'
+  when: not mount_exists
+
+- name: Mount filesystem
+  mount:
+    path: "{{ mount_directory }}"
+    src: /dev/vg_{{ vg_name }}/lv_{{ vg_name }}
+    fstype: ext4
+    state: mounted
+  when: not mount_exists
+
+# ---------------------------------------------------------
+# 4️⃣ Verify
+# ---------------------------------------------------------
+
+- name: Show disk usage
+  command: df -h {{ mount_directory }}
+  register: df_output
+  changed_when: false
+
+- debug:
+    msg: "{{ df_output.stdout }}"

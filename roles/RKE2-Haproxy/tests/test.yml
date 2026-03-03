@@ -1,0 +1,8 @@
+---
+- hosts: RKE2-Haproxy
+  remote_user: ubuntu
+  become: yes           # <-- run tasks as sudo
+  roles:
+    - RKE2-Haproxy
+
+

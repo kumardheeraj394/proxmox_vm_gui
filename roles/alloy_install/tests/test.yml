@@ -1,0 +1,8 @@
+---
+- hosts: alloy_install
+  remote_user: dheeraj
+  become: yes           # <-- run tasks as sudo
+  roles:
+    - alloy_install
+
+

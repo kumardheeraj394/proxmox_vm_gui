@@ -1,0 +1,6 @@
+---
+- hosts: RKE2-Nginx
+  remote_user: ubuntu
+  become: yes           # <-- run tasks as sudo
+  roles:
+    - RKE2-Nginx

@@ -1,0 +1,7 @@
+- name: Configure Master1
+  include_tasks: RKE2-Master1
+  when: master_ip == ansible_host
+
+- name: Configure secondary master Cluster
+  include_tasks: RKE2-Master2
+  when: master_ip != ansible_host

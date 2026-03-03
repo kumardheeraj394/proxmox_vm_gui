@@ -1,0 +1,4 @@
+---
+# defaults for extend_root role
+#root_mount_point: "/"
+#mount_directory: "/bk2"  

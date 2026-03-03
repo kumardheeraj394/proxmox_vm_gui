@@ -1,0 +1,128 @@
+- name: Download kubectl binary
+  get_url:
+    url: "https://dl.k8s.io/release/{{ lookup('url', 'https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
+    dest: /tmp/kubectl
+    mode: '0755'
+
+- name: Download kubectl checksum
+  get_url:
+    url: "https://dl.k8s.io/release/{{ lookup('url', 'https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl.sha256"
+    dest: /tmp/kubectl.sha256
+
+- name: Verify kubectl checksum
+  shell: "echo \"$(cat /tmp/kubectl.sha256)  /tmp/kubectl\" | sha256sum --check"
+  args:
+    executable: /bin/bash
+
+- name: Install kubectl
+  command: "install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl"
+
+- name: Verify kubectl installation
+  command: kubectl version --client
+  register: kubectl_version
+
+- debug:
+    var: kubectl_version.stdout
+
+#Rke2 Binary
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - vim
+      - wget
+    state: present
+    update_cache: yes
+
+- name: Download RKE2 install script
+  get_url:
+    url: "{{ rke2_install_url }}"
+    dest: /tmp/install.sh
+    mode: '0755'
+
+- name: Make RKE2 script executable
+  file:
+    path: /tmp/install.sh
+    mode: '0755'
+
+#- name: Install RKE2 server (default channel)
+#  command: /tmp/install.sh
+#  args:
+#    creates: /usr/local/bin/rke2
+#  environment:
+#    INSTALL_RKE2_TYPE: server
+
+- name: Install RKE2 server (specific version v1.32.10+rke2r1)
+  command: /tmp/install.sh
+  args:
+    creates: /usr/local/bin/rke2
+  environment:
+    INSTALL_RKE2_TYPE: server
+    INSTALL_RKE2_CHANNEL: "{{ rke2_version }}"
+  become: yes    
+
+- name: Enable RKE2 server service
+  systemd:
+    name: rke2-server
+    enabled: yes
+    state: started
+
+- name: Create RKE2 config directory
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: '0755'
+
+- name: Deploy RKE2 server config
+  template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: '0644'
+  become: yes     
+
+- name: Restart RKE2 server to pick up config
+  systemd:
+    name: rke2-server
+    state: restarted
+
+- name: Add RKE2 bin and KUBECONFIG to bashrc
+  lineinfile:
+    path: "/home/{{ ansible_user }}/.bashrc"
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+    - 'export KUBECONFIG=/etc/rancher/rke2/rke2.yaml'
+  become: no    
+
+- name: Run kubectl with RKE2 config
+  shell: "kubectl get nodes"
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/var/lib/rancher/rke2/bin"
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Verify nodes with kubectl
+  shell: kubectl get nodes
+  register: kubectl_nodes
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/var/lib/rancher/rke2/bin"
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Show kubectl nodes output
+  debug:
+    var: kubectl_nodes.stdout
+
+- name: Verify pods across all namespaces
+  shell: kubectl get pods -A
+  register: kubectl_pods
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/var/lib/rancher/rke2/bin"
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml    
+
+- debug:
+    var: kubectl_pods.stdout
+

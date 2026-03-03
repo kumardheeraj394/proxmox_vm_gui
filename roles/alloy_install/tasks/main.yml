@@ -1,0 +1,73 @@
+---
+  - name: Ensure keyrings directory exists
+    file:
+      path: /etc/apt/keyrings
+      state: directory
+      mode: '0755'
+
+  - name: Download Grafana GPG key
+    get_url:
+      url: https://apt.grafana.com/gpg-full.key
+      dest: /etc/apt/keyrings/grafana.asc
+      mode: '0644'
+
+  - name: Add Grafana repository
+    ansible.builtin.copy:
+      dest: /etc/apt/sources.list.d/grafana.list
+      content: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main\n"
+      owner: root
+      group: root
+      mode: '0644'
+
+
+  - name: Update apt cache
+    ansible.builtin.apt:
+      update_cache: yes
+
+  - name: Install alloy package
+    ansible.builtin.apt:
+      name: alloy
+      state: present
+
+  - name: Ensure shell audit log has correct permissions
+    file:
+      path: /var/log/shell_audit.log
+      mode: '0640'
+      owner: root
+      group: adm
+
+  - name: Copy Alloy Config File
+    template:
+      src: config.alloy.j2
+      dest: /etc/alloy/config.alloy
+      mode: '0644'
+
+  - name: Ensure /etc/default/alloy has the correct configuration
+    copy:
+      dest: /etc/default/alloy
+      content: |
+        CONFIG_FILE="/etc/alloy/config.alloy"
+        CUSTOM_ARGS="--server.http.listen-addr=0.0.0.0:1545"
+        RESTART_ON_UPGRADE=true
+      owner: root
+      group: root
+      mode: '0644'
+
+  - name: Reload systemd
+    command: systemctl daemon-reexec
+
+  - name: Restart alloy service
+    systemd:
+      name: alloy
+      state: started
+      enabled: yes
+
+# Swap Size
+#  - name: Setup 4GB swap file
+#    shell: |
+#      dd if=/dev/zero of=/swap count=4196 bs=1MiB
+#      chmod 600 /swap
+#      mkswap /swap
+#      swapon /swap
+#      grep -qF '/swap' /etc/fstab || echo '/swap swap swap sw 0 0' | tee -a /etc/fstab
+#    become: true       
