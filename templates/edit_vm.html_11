@@ -40,6 +40,7 @@ body {
 
 <body>
 
+<!-- HEADER -->
 <div class="page-header d-flex justify-content-between align-items-center">
     <h5 class="mb-0">Edit VM {{ vm.vmid }}</h5>
     <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-light">
@@ -53,7 +54,6 @@ body {
 
 <div class="card p-3 mb-4 shadow-sm">
 
-<!-- VM Info -->
 <div class="row mb-3">
 <div class="col-md-3">
 <label class="form-label">VM Name</label>
@@ -90,66 +90,15 @@ body {
 
 <hr>
 
-<!-- Disk Selection -->
-<h6 class="fw-bold">Disk Configuration</h6>
-
-<div class="row mb-3">
-  <div class="col-md-3">
-    <label class="form-label">Disk Type</label>
-    <select id="diskType" name="disk" class="form-select" onchange="toggleDiskFields()">
-      <option value="">-- Select Disk --</option>
-      <option value="primary" {% if vm.extra_vars.disk == 'primary' %}selected{% endif %}>Primary</option>
-      <option value="secondary" {% if vm.extra_vars.disk == 'secondary' %}selected{% endif %}>Secondary</option>
-    </select>
-  </div>
-</div>
-
-<!-- Primary Disk Fields -->
-<div id="primaryFields" style="display:none;">
-  <div class="row mb-3">
-    <div class="col-md-3">
-      <label class="form-label">Primary Disk Size</label>
-      <input type="text" name="primary_disksize" class="form-control"
-             value="{{ vm.extra_vars.primary_disksize }}">
-    </div>
-    <div class="col-md-3">
-      <label class="form-label">Root Mount Point</label>
-      <input type="text" name="root_mount_point" class="form-control"
-             value="{{ vm.extra_vars.root_mount_point or '/' }}">
-    </div>
-  </div>
-</div>
-
-<!-- Secondary Disk Fields -->
-<div id="secondaryFields" style="display:none;">
-  <div class="row mb-3">
-    <div class="col-md-3">
-      <label class="form-label">Secondary Disk Size</label>
-      <input type="text" name="secondary_disksize" class="form-control"
-             value="{{ vm.extra_vars.secondary_disksize }}">
-    </div>
-    <div class="col-md-3">
-      <label class="form-label">Mount Directory</label>
-      <input type="text" name="mount_directory" class="form-control"
-             value="{{ vm.extra_vars.mount_directory or '/data' }}">
-    </div>
-  </div>
-</div>
-
-<hr>
-
-<!-- Extra Variables -->
 <h6 class="fw-bold">Extra Variables</h6>
 
 <div id="variables-container">
 {% for key, value in vm.extra_vars.items() %}
-    {% if key not in ['disk', 'primary_disksize', 'root_mount_point', 'secondary_disksize', 'mount_directory'] %}
-    <div class="var-row">
-        <input type="text" name="var_name[]" class="form-control" value="{{ key }}" placeholder="Variable Name">
-        <input type="text" name="var_value[]" class="form-control" value="{{ value }}" placeholder="Value">
-        <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">X</button>
-    </div>
-    {% endif %}
+<div class="var-row">
+<input type="text" name="var_name[]" class="form-control" value="{{ key }}" placeholder="Variable Name">
+<input type="text" name="var_value[]" class="form-control" value="{{ value }}" placeholder="Value">
+<button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">X</button>
+</div>
 {% endfor %}
 </div>
 
@@ -159,7 +108,6 @@ body {
 
 <hr>
 
-<!-- Ansible Roles -->
 <div class="mb-3">
 <label class="form-label">Select Ansible Roles</label>
 <select name="ansible_roles" class="form-select" multiple size="5">
@@ -207,19 +155,6 @@ function removeRow(btn) {
     btn.parentElement.remove();
 }
 
-// Disk Field Toggle
-function toggleDiskFields() {
-    let disk = document.getElementById('diskType').value;
-    document.getElementById('primaryFields').style.display = (disk === 'primary') ? 'block' : 'none';
-    document.getElementById('secondaryFields').style.display = (disk === 'secondary') ? 'block' : 'none';
-}
-
-// Initialize disk fields on page load
-window.addEventListener('DOMContentLoaded', (event) => {
-    toggleDiskFields();
-});
-
-// Ansible Console Refresh
 function refreshLog() {
 fetch("/ansible_log/{{ vm.vmid }}")
 .then(response => response.text())

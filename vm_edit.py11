@@ -30,6 +30,7 @@ def generate_inventory(
         ipaddr,
         ssh_port,
         role,
+        disksize,
         cluster_name,
         master_ip,
         extra_vars):
@@ -50,17 +51,12 @@ def generate_inventory(
 
         f.write(f"[{role}:vars]\n")
         f.write(f"vmid={vmid}\n")
+        f.write(f"disksize={disksize}\n")
         f.write(f"cluster_name={cluster_name}\n")
         f.write(f"master_ip={master_ip}\n")
 
-        # Include disk type if provided
-        if "disk" in extra_vars:
-            f.write(f"disk={extra_vars['disk']}\n")
-
-        # Write other extra vars
+        # Write dynamic extra vars
         for key, value in extra_vars.items():
-            if key == "disk":
-                continue
             f.write(f"{key}={value}\n")
 
     return inv_path
@@ -134,6 +130,7 @@ def edit_vm(vmid):
         ipaddr = request.form["ipaddr"]
         ssh_port = request.form["ssh_port"]
         target_node = request.form["target_node"]
+        disksize = int(request.form.get("disksize", 20))
         cluster_name = request.form.get("cluster_name", "")
         master_ip = request.form.get("master_ip", "")
         selected_roles = request.form.getlist("ansible_roles")
@@ -147,32 +144,14 @@ def edit_vm(vmid):
             if name.strip():
                 extra_vars[name.strip()] = value.strip()
 
-        # ========= Collect Disk Type and Disk Fields =========
-        disk_type = request.form.get("disk", "").strip()
-        if disk_type:
-            extra_vars["disk"] = disk_type
-
-            # Remove any old disk variables
-            for key in ["primary_disksize", "root_mount_point", "secondary_disksize", "mount_directory"]:
-                extra_vars.pop(key, None)
-
-            if disk_type == "primary":
-                primary_disksize = request.form.get("primary_disksize", "").strip()
-                root_mount_point = request.form.get("root_mount_point", "").strip()
-                if primary_disksize:
-                    extra_vars["primary_disksize"] = primary_disksize
-                if root_mount_point:
-                    extra_vars["root_mount_point"] = root_mount_point
-
-            elif disk_type == "secondary":
-                secondary_disksize = request.form.get("secondary_disksize", "").strip()
-                mount_directory = request.form.get("mount_directory", "").strip()
-                if secondary_disksize:
-                    extra_vars["secondary_disksize"] = secondary_disksize
-                if mount_directory:
-                    extra_vars["mount_directory"] = mount_directory
-
         extra_vars_json = json.dumps(extra_vars)
+
+        current_size = int(vm["disksize"])
+
+        if disksize < current_size:
+            flash("Disk shrinking is not allowed in Proxmox", "danger")
+            conn.close()
+            return redirect(url_for("vm_edit.edit_vm", vmid=vmid))
 
         # ========= Update DB =========
         c.execute("""
@@ -181,6 +160,7 @@ def edit_vm(vmid):
                 ipaddr=?,
                 target_node=?,
                 ssh_port=?,
+                disksize=?,
                 cluster_name=?,
                 master_ip=?,
                 extra_vars=?
@@ -190,6 +170,7 @@ def edit_vm(vmid):
             ipaddr,
             target_node,
             ssh_port,
+            disksize,
             cluster_name,
             master_ip,
             extra_vars_json,
@@ -211,6 +192,7 @@ def edit_vm(vmid):
                 ipaddr,
                 ssh_port,
                 role,
+                disksize,
                 cluster_name,
                 master_ip,
                 extra_vars
