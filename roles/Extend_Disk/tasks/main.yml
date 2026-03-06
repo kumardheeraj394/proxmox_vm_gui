@@ -2,41 +2,10 @@
 # -----------------------------
 # 3️⃣ Include task files conditionally
 # -----------------------------
-# Detect root disk (sda)
-- name: Get root device
-  set_fact:
-    root_device: "{{ ansible_mounts | selectattr('mount','equalto','/') | map(attribute='device') | first }}"
-
-- name: Get parent disk of root
-  command: lsblk -no PKNAME {{ root_device }}
-  register: root_parent
-  changed_when: false
-
-- name: Set root disk path
-  set_fact:
-    root_disk: "/dev/{{ root_parent.stdout | trim }}"
-
-# Get disk size
-- name: Get root disk size
-  command: blockdev --getsize64 {{ root_disk }}
-  register: disk_size
-  changed_when: false
-
-# Get partition size (or PV if LVM)
-- name: Get root partition size
-  command: blockdev --getsize64 {{ root_device }}
-  register: part_size
-  changed_when: false
-
-# Decide if root has free space
-- name: Set root_has_free_space
-  set_fact:
-    root_has_free_space: "{{ disk_size.stdout | int > part_size.stdout | int }}"
-
 - name: Extend root disk if needed
   include_tasks: primary.yml
-  when: root_has_free_space  
+  when: disk == primary
 
-#- name: Extend secondary disk if needed
-#  include_tasks: secondary.yml
-#  when: not root_has_free_space  
+- name: Extend secondary disk if needed
+  include_tasks: secondary.yml
+  when: disk == secondary

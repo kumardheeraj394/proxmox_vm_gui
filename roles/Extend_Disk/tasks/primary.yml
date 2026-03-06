@@ -1,9 +1,9 @@
 ---
-#- name: Resize main disk on remote Proxmox host
-#  ansible.builtin.command: qm resize {{ vmid }} scsi0 +{{ disksize }}G
-#  delegate_to: 10.0.24.57
-#  remote_user: root
-#  become: false
+- name: Resize main disk on remote Proxmox host
+  ansible.builtin.command: qm resize {{ vmid }} scsi0 +{{ primary_disksize }}G
+  delegate_to: 10.0.24.57
+  remote_user: root
+  become: false
 
 # 1️⃣ Gather system facts
 - name: Gather system facts

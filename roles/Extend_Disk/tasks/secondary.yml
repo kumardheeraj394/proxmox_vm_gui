@@ -1,4 +1,9 @@
 ---
+- name: Resize main disk on remote Proxmox host
+  ansible.builtin.command: qm resize {{ vmid }} scsi1 +{{ secondary_disksize }}G
+  delegate_to: 10.0.24.57
+  remote_user: root
+  become: false
 # =========================================================
 # Secondary Disk Logic (/data)
 # =========================================================
