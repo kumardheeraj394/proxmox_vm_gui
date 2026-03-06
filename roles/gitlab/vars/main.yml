@@ -1,0 +1,13 @@
+cloudinit_users:
+  - name: bhaskar
+    ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKW9bnj/PvGNa3Rl3I3Q4JPw1hTz+y15KJCmEY4QVPGO bhaskar.soni@server.net@user"
+  - name: shrikant
+    ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDOIJSLHiixh3Vsb5Mh9902C3j4QIKu5xZ/qKEBVnt6x root@fspl-mkt35"
+  - name: jassi
+    ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINy9zmSEjDZKXmmNwZtzEMIBToaCAU40+0s0LUsRZQ2I eddsa-key-20220406"
+  - name: dheeraj
+    ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILUIhcHmWG/mZAsqodL7/cAsqra3dg8MculD9T1biRC dheeraj.kumar@Global.local@fspl-cs"
+  - name: deepak
+    ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINaKvrk5V68YZAgDNIY5lOCZgvpcQfvUq0nkKL+tTrwM SERVER0\\dbirla@fspl-deepakbirla"
+  - name: harpreet
+    ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFes0VkRuMk7uQAIFBmLdZEghfy8JxzInd9olYpPkS3t root@Harpreets-MacBook-Pro-2.local"

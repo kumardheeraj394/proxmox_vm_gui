@@ -1,8 +1,8 @@
 ---
-- hosts: alloy_install
+- hosts: gitlab
   remote_user: ubuntu
   become: yes           # <-- run tasks as sudo
   roles:
-    - alloy_install
+    - gitlab
 
 

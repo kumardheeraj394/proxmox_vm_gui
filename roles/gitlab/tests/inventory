@@ -1,0 +1,14 @@
+[alloy_install]
+#host1 ansible_host=10.0.25.111 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host2 ansible_host=10.0.25.112 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host3 ansible_host=10.0.25.113 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host4 ansible_host=10.0.25.114 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host5 ansible_host=10.0.25.115 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host6 ansible_host=10.0.25.116 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host7 ansible_host=10.0.25.131 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host8 ansible_host=10.0.25.132 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host9 ansible_host=10.0.25.133 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no' 
+host10 ansible_host=10.0.25.134 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host11 ansible_host=10.0.25.135 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+host12 ansible_host=10.0.25.136 ansible_user=dheeraj ansible_port=10457 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+

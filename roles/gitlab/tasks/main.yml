@@ -1,0 +1,82 @@
+---
+- name: Extract hostname from gitlab_external_url
+  set_fact:
+    gitlab_host: "{{ gitlab_external_url | regex_replace('https?://', '') | regex_replace('/.*$', '') }}"
+
+- name: Add GitLab host entry to /etc/hosts using ansible_host
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ ansible_host }} {{ gitlab_host }}"
+    state: present
+    create: yes
+   
+- name: Ensure required packages are installed
+  apt:
+    name:
+      - curl
+      - openssh-server
+      - ca-certificates
+      - tzdata
+      - perl
+      - ufw
+    state: present
+    update_cache: yes
+
+- name: Download GitLab CE package
+  get_url:
+    url: "https://packages.gitlab.com/gitlab/gitlab-ce/packages/ubuntu/jammy/gitlab-ce_{{ gitlab_version }}_amd64.deb/download.deb"
+    dest: /tmp/gitlab-ce.deb
+    mode: '0644'
+
+- name: Install GitLab CE package
+  apt:
+    deb: /tmp/gitlab-ce.deb
+    state: present
+
+- name: Create GitLab SSL directory
+  file:
+    path: /etc/gitlab/ssl
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"      
+
+- name: Generate self-signed certificate
+  command:
+    cmd: >
+      openssl req -x509 -nodes -days 3650
+      -newkey rsa:2048
+      -keyout /etc/gitlab/ssl/{{ gitlab_host }}.key
+      -out /etc/gitlab/ssl/{{ gitlab_host }}.crt
+      -subj "/CN={{ gitlab_host }}"
+  args:
+    creates: "/etc/gitlab/ssl/{{ gitlab_host }}.crt"
+
+- name: Set permissions on SSL key
+  file:
+    path: "/etc/gitlab/ssl/{{ gitlab_host }}.key"
+    owner: root
+    group: root
+    mode: "0400"
+
+- name: Configure GitLab HTTPS settings
+  blockinfile:
+    path: /etc/gitlab/gitlab.rb
+    marker: "# {mark} ANSIBLE MANAGED SSL CONFIG"
+    block: |
+      external_url "{{ gitlab_external_url }}"
+      letsencrypt['enable'] = false
+      nginx['ssl_certificate'] = "/etc/gitlab/ssl/{{ gitlab_host }}.crt"
+      nginx['ssl_certificate_key'] = "/etc/gitlab/ssl/{{ gitlab_host }}.key"      
+
+- name: Reconfigure GitLab
+  command: gitlab-ctl reconfigure
+
+- name: Show GitLab root password only
+  command: cat /etc/gitlab/initial_root_password
+  register: gitlab_root_password
+  ignore_errors: yes
+
+- name: Print GitLab root password as plain string
+  debug:
+    msg: "{{ (gitlab_root_password.stdout | regex_search('Password: (.+)', '\\1') | default('Password file not found or already used.')) | trim }}"    
