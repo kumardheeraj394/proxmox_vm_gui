@@ -1,11 +1,8 @@
 ---
-# -----------------------------
-# 3️⃣ Include task files conditionally
-# -----------------------------
 - name: Extend root disk if needed
   include_tasks: primary.yml
-  when: disk == primary
+  when: disk == "primary"
 
 - name: Extend secondary disk if needed
   include_tasks: secondary.yml
-  when: disk == secondary
+  when: disk == "secondary"
